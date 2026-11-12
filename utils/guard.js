@@ -4,6 +4,8 @@ const { EmbedBuilder } = require('discord.js');
 const cfg = require('../config.json');
 
 const guardDataPath = path.join(__dirname, '../data/guard.json');
+const LIMIT = 3;                 // izin verilen işlem sayısı
+const WINDOW_MS = 10 * 60 * 1000; // 10 dakika pencere (eski işlemler sayılmaz)
 
 function initGuardData() {
     if (!fs.existsSync(guardDataPath)) {
@@ -13,10 +15,18 @@ function initGuardData() {
 
 async function checkGuard(executor, guild) {
     if (!executor) return;
+
+    /* ---------- MUAF LİSTESİ ---------- */
+    // 1) Botun kendisi (setup kanal kurarken kendini atmasın!)
+    if (cfg.clientId && executor.id === cfg.clientId) return;
+    // 2) Bot sahipleri
     if (cfg.ownerId.includes(executor.id)) return;
-    
+
     const member = await guild.members.fetch(executor.id).catch(() => null);
-    if (member && member.roles.cache.has(cfg.ownerRoleId)) return;
+    // 3) Boss rolü olanlar
+    if (cfg.ownerRoleId && member && member.roles.cache.has(cfg.ownerRoleId)) return;
+    // 4) Sunucuyu yönetme yetkisi olanlar guard'ı tetiklemesin (yetkili işlemleri güvenli sayılır)
+    if (member && member.permissions.has('ManageGuild')) return;
 
     initGuardData();
     let data;
@@ -25,16 +35,23 @@ async function checkGuard(executor, guild) {
     } catch {
         data = { limits: {} };
     }
+    if (!data.limits) data.limits = {};
 
-    if (!data.limits[executor.id]) {
-        data.limits[executor.id] = 0;
+    // Eski format (sayı) veya zaman aşımı -> sıfırla
+    const now = Date.now();
+    let entry = data.limits[executor.id];
+    if (typeof entry === 'number') entry = { count: entry, ts: now };
+    if (!entry || typeof entry !== 'object' || now - (entry.ts || 0) > WINDOW_MS) {
+        entry = { count: 0, ts: now };
     }
 
-    data.limits[executor.id] += 1;
+    entry.count += 1;
+    entry.ts = now;
+    data.limits[executor.id] = entry;
     fs.writeFileSync(guardDataPath, JSON.stringify(data, null, 4));
 
-    if (data.limits[executor.id] >= 3) {
-        if (member) {
+    if (entry.count >= LIMIT) {
+        if (member && member.kickable) {
             await member.kick('Guard Sistemi İhlali: Kurallar limitinden fazla işlem (Limit: 3)').catch(e => console.error('Kick error:', e));
         }
 
@@ -48,15 +65,16 @@ async function checkGuard(executor, guild) {
                     const embed = new EmbedBuilder()
                         .setColor(0xFF0000)
                         .setTitle('🛡️ Guard İhlali Tespit Edildi!')
-                        .setDescription(`**Yetkili:** ${executor} (\`${executor.id}\`)\n**Sebep:** Kanal/Rol işlem limiti (3) aşıldı.\n**İşlem:** Üye sunucudan atıldı.`)
+                        .setDescription(`**Yetkili:** ${executor} (\`${executor.id}\`)\n**Sebep:** Kanal/Rol işlem limiti (${LIMIT}) 10 dakika içinde aşıldı.\n**İşlem:** Üye sunucudan atıldı.`)
                         .setFooter({ text: `${cfg.footer.text} | Guard Sistemi` })
                         .setTimestamp();
                     await guardChannel.send({ embeds: [embed] }).catch(() => {});
                 }
             }
         }
-        
-        data.limits[executor.id] = 0; // reset
+
+        // Sayaç sıfırla
+        data.limits[executor.id] = { count: 0, ts: now };
         fs.writeFileSync(guardDataPath, JSON.stringify(data, null, 4));
     }
 }
