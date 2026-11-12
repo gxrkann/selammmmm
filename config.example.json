@@ -1,0 +1,21 @@
+{
+    "token": "BURAYA_BOT_TOKENINIZI_YAZIN",
+    "clientId": "BURAYA_APPLICATION_ID_YAZIN",
+    "guildId": "BURAYA_SUNUCU_ID_YAZIN",
+    "prefix": "!",
+    "ownerId": [
+        "BURAYA_DISCORD_ID_YAZIN"
+    ],
+    "ownerRoleId": "BURAYA_BOSS_ROL_ID_YAZIN",
+    "memberRoleId": "BURAYA_EKIP_ROL_ID_YAZIN",
+    "ekipRolleri": [
+        "BURAYA_EKIP_ROL_ID_YAZIN_1",
+        "BURAYA_EKIP_ROL_ID_YAZIN_2"
+    ],
+    "welcomeChannelId": "BURAYA_KARŞILAMA_KANALI_ID_YAZIN",
+    "ticketCategoryId": "BURAYA_TICKET_KATEGORI_ID_YAZIN",
+    "voiceChannelId": "BURAYA_SES_KANALI_ID_YAZIN",
+    "footer": {
+        "text": "Gxrkan"
+    }
+}

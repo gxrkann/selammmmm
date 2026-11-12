@@ -1,0 +1,27 @@
+{
+    "name": "gxrkan-ekip-bot",
+    "version": "2.0.0",
+    "description": "Gxrkan Ekip Botu — Discord.js v14",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js",
+        "dev": "nodemon index.js",
+        "deploy": "node deploy-commands.js"
+    },
+    "keywords": [
+        "discord",
+        "bot",
+        "discord.js",
+        "ekip"
+    ],
+    "author": "Gxrkan",
+    "license": "MIT",
+    "dependencies": {
+        "@discordjs/voice": "^0.18.0",
+        "canvafy": "^7.2.1",
+        "discord.js": "^14.16.3"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.2"
+    }
+}

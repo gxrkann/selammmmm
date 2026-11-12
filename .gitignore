@@ -1,0 +1,16 @@
+# Bağımlılıklar
+node_modules/
+package-lock.json
+
+# Bot yapılandırması (token içerir)
+config.json
+
+# Veri dosyaları (kullanıcı verileri)
+data/*.json
+!data/.gitkeep
+
+# Günlük / geçici dosyalar
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
