@@ -11,6 +11,7 @@ const singleKeys = [
     'guildId',
     'ownerRoleId',
     'memberRoleId',
+    'etkinlikRoleId',
     'welcomeChannelId',
     'ticketCategoryId',
     'voiceChannelId',

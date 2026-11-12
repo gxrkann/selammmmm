@@ -28,6 +28,16 @@ module.exports = {
   name: Events.GuildMemberRemove,
   async execute(member) {
     try {
+      /* ---------- ETKİNLİK TEMİZLİĞİ ---------- */
+      // Sunucudan ayrılan kişi aktif etkinlikte kayıtlıysa listeden düşürülür;
+      // perm verilmiş durumdaysa Discord rolü otomatik çeker, ayrıca embed güncellenir.
+      try {
+        const etkinlik = require('../commands/etkinlik');
+        await etkinlik.handleMemberLeave(member);
+      } catch (e) {
+        console.error('Etkinlik üye çıkış temizliği hatası:', e);
+      }
+
       // log.json'dan luneriscikis-log kanal ID'sini al
       const logData = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/log.json'), 'utf8'));
       const exitLogChannelId = logData['lrcikis-log'];

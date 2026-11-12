@@ -25,6 +25,11 @@ module.exports = {
             console.error('Aktiflik testi devam ettirilemedi:', error);
         });
 
+        // Yarıda kalan etkinlikleri devam ettir
+        require('../commands/etkinlik').resume(client).catch((error) => {
+            console.error('Etkinlik devam ettirilemedi:', error);
+        });
+
         // Ses kanalına bağlan (ID'ler doluysa)
         if (config.guildId && config.voiceChannelId) {
             try {

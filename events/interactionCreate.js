@@ -15,6 +15,9 @@ module.exports = {
             if (interaction.customId === 'basvuru_button') {
                 return başvuruCommand.handleButton(interaction);
             }
+            if (interaction.customId.startsWith('etk_')) {
+                return require('../commands/etkinlik').handleButton(interaction);
+            }
         }
 
         // Select menu interaction'ları
