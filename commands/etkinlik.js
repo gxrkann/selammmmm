@@ -101,8 +101,8 @@ async function sendEventMessage(kanal, ev) {
 /* ---------------- Komut ---------------- */
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('etkinlik')
-        .setDescription('In-game etkinlik yoklaması oluşturur (gece 12\'ye kadar sürer)')
+        .setName('ingame')
+        .setDescription('In-game yoklama oluşturur (gece 12\'ye kadar sürer, sonra kendini imha eder)')
         .addIntegerOption(o => o.setName('kadro').setDescription('Kadro kapasitesi (ana kadro)').setRequired(true).setMinValue(1).setMaxValue(50))
         .addIntegerOption(o => o.setName('yedek').setDescription('Yedek kapasitesi').setRequired(true).setMinValue(0).setMaxValue(20))
         .addIntegerOption(o => o.setName('baslangic').setDescription('Kaç dakika sonra başlasın? (boş: hemen başlar)').setMinValue(1).setMaxValue(720))
