@@ -2,7 +2,7 @@ console.log("Running file:", __filename);
 const { Client, GatewayIntentBits, Collection, Events } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const config = require('./config.json');
+const config = require('./utils/env'); // config.json + ortam değişkenleri
 
 // Create a new client instance
 const client = new Client({
