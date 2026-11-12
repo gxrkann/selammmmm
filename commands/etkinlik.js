@@ -1,9 +1,11 @@
 // commands/etkinlik.js
 // In-game etkinlik yoklama sistemi
 // KATIL / AYRIL / BİLGİ / İPTAL butonları + otomatik rol (perm) + etkinlik kodu DM
+// Etkinlik GECE 12'ye kadar sürer → o saatte mesaj silinir (kendini imha),
+// seçilen roldeki TÜM kişilerden rol geri çekilir, veri temizlenir.
 const {
     SlashCommandBuilder, EmbedBuilder, ActionRowBuilder,
-    ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits
+    ButtonBuilder, ButtonStyle, ChannelType, AttachmentBuilder
 } = require('discord.js');
 const config = require('../config.json');
 const fs = require('fs');
@@ -28,7 +30,7 @@ function save(data) {
 
 function getActive() { return load().active || null; }
 function setActive(ev) { const d = load(); d.active = ev; save(d); }
-function clearActive() { const d = load(); d.active = null; save(d); }
+function clearActive() { const d = load(); delete d.active; save(d); }
 
 function isOwner(interaction, ev) {
     if (ev && interaction.user.id === ev.ownerId) return true;
@@ -37,8 +39,11 @@ function isOwner(interaction, ev) {
     return false;
 }
 
-function eventRole(guild) {
-    return (config.etkinlikRoleId && guild.roles.cache.get(config.etkinlikRoleId)) || null;
+/* ---------------- Gece 12 (ertesi 00:00) hesabı ---------------- */
+function nextMidnight() {
+    const d = new Date();
+    d.setHours(24, 0, 0, 0); // bugünün ertesi gece 00:00 (yerel saat)
+    return d.getTime();
 }
 
 /* ---------------- Embed ---------------- */
@@ -46,8 +51,8 @@ function buildEmbed(ev) {
     const started = ev.status !== 'beklemede';
 
     const desc =
-        `<@&${ev.roleId || '@everyone'}> KADRO (silme) VERİLDİR. AYRILINCA VE SÜRE BİTİNCE ALINIR.` +
-        (started ? `\n\n✅ **ETKİNLİK BAŞLADI — Etkinlik kodları DM ile gönderildi.**` : '');
+        `<@&${ev.roleId}> etkinlik rolü verildi. Ayrılınca veya **gece 12'de** geri alınır.` +
+        (started ? `\n\n✅ **ETKİNLİK BAŞLADI — Etkinlik kodu DM ile gönderildi.**` : '');
 
     const kadroList = ev.kadro.map((id, i) => `${i + 1}. <@${id}>`).join('\n') || '_Henüz katılım yok_';
     const yedekList = ev.yedek.length ? ev.yedek.map((id, i) => `${i + 1}. <@${id}>`).join('\n') : '_Yedek yok_';
@@ -60,9 +65,9 @@ function buildEmbed(ev) {
             { name: '• KADRO:', value: `\`${ev.kadro.length}/${ev.kadroMax}\``, inline: true },
             { name: '• YEDEK:', value: `\`${ev.yedek.length}/${ev.yedekMax}\``, inline: true },
             { name: '\u200b', value: '\u200b', inline: true },
-            { name: '• BİRTS:', value: `<t:${Math.floor(ev.startAt / 1000)}:F>\n<t:${Math.floor(ev.startAt / 1000)}:R>`, inline: true },
-            { name: '• SÜRE:', value: `\`${ev.sureSaat} SAAT\``, inline: true },
-            { name: '• TOPLANMA:', value: `<t:${Math.floor(ev.toplasmaAt / 1000)}:t>`, inline: true },
+            { name: '• BAŞLANGIÇ:', value: `<t:${Math.floor(ev.startAt / 1000)}:F>\n<t:${Math.floor(ev.startAt / 1000)}:R>`, inline: true },
+            { name: '• BİTİŞ:', value: `🌙 **GECE 12**\n<t:${Math.floor(ev.endAt / 1000)}:R>`, inline: true },
+            { name: '\u200b', value: '\u200b', inline: true },
             { name: `KADRO (${ev.kadro.length})`, value: kadroList.slice(0, 1024) },
             { name: `YEDEK (${ev.yedek.length})`, value: yedekList.slice(0, 1024) },
         )
@@ -86,16 +91,21 @@ function buildButtons() {
     );
 }
 
+async function sendEventMessage(kanal, ev) {
+    const { embed, file } = buildEmbed(ev);
+    const payload = { embeds: [embed], components: [buildButtons()], fetchReply: true };
+    if (file) payload.files = [new AttachmentBuilder(file, { name: 'logo.png' })];
+    return kanal.send(payload);
+}
+
 /* ---------------- Komut ---------------- */
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('etkinlik')
-        .setDescription('In-game etkinlik yoklaması oluşturur')
+        .setDescription('In-game etkinlik yoklaması oluşturur (gece 12\'ye kadar sürer)')
         .addIntegerOption(o => o.setName('kadro').setDescription('Kadro kapasitesi (ana kadro)').setRequired(true).setMinValue(1).setMaxValue(50))
         .addIntegerOption(o => o.setName('yedek').setDescription('Yedek kapasitesi').setRequired(true).setMinValue(0).setMaxValue(20))
-        .addIntegerOption(o => o.setName('baslangic').setDescription('Kaç dakika sonra başlasın? (5-1440)').setRequired(true).setMinValue(5).setMaxValue(1440))
-        .addIntegerOption(o => o.setName('sure').setDescription('Kaç saat sürecek?').setRequired(true).setMinValue(1).setMaxValue(12))
-        .addIntegerOption(o => o.setName('toplanma').setDescription('Kaç dakika sonra toplanma? (boş bırakılırsa başlangıçtan 10 dk önce)').setMinValue(5).setMaxValue(1440))
+        .addIntegerOption(o => o.setName('baslangic').setDescription('Kaç dakika sonra başlasın? (boş: hemen başlar)').setMinValue(1).setMaxValue(720))
         .addStringOption(o => o.setName('kod').setDescription('Etkinlik kodu (boş bırakılırsa rastgele üretilir)').setMaxLength(20))
         .addChannelOption(o => o.setName('kanal').setDescription('Mesajın gönderileceği kanal (boş: bu kanal)')),
 
@@ -108,22 +118,21 @@ module.exports = {
         }
 
         if (getActive()) {
-            return interaction.reply({ content: '❌ Zaten aktif bir etkinlik var! Önce `/etkinlik iptal` yapın veya İPTAL ET butonunu kullanın.', ephemeral: true });
+            return interaction.reply({ content: '❌ Zaten aktif bir etkinlik var! Önce İPTAL ET butonunu kullanın.', ephemeral: true });
+        }
+
+        if (!config.etkinlikRoleId || config.etkinlikRoleId.startsWith('BURAYA_')) {
+            return interaction.reply({ content: '❌ `config.json` içinde `etkinlikRoleId` ayarlı değil! Önce perm verilecek rolün ID\'sini girin.', ephemeral: true });
         }
 
         await interaction.deferReply({ ephemeral: true });
 
         const kadroMax = interaction.options.getInteger('kadro');
         const yedekMax = interaction.options.getInteger('yedek');
-        const baslangicDk = interaction.options.getInteger('baslangic');
-        const sureSaat = interaction.options.getInteger('sure');
-        const toplanmaDk = interaction.options.getInteger('toplanma') ?? (baslangicDk - 10);
+        const baslangicDk = interaction.options.getInteger('baslangic') ?? 0;
         const kod = interaction.options.getString('kod') || Math.random().toString(36).slice(2, 8).toUpperCase();
         const kanal = interaction.options.getChannel('kanal') ?? interaction.channel;
 
-        if (toplanmaDk >= baslangicDk) {
-            return interaction.editReply('❌ Toplanma zamanı başlangıçtan önce olmalı!');
-        }
         if (!kanal || kanal.type !== ChannelType.GuildText) {
             return interaction.editReply('❌ Geçerli bir metin kanalı seçin!');
         }
@@ -134,34 +143,26 @@ module.exports = {
             channelId: kanal.id,
             guildId: interaction.guildId,
             ownerId: interaction.user.id,
-            kadroMax, yedekMax, sureSaat,
+            kadroMax, yedekMax,
             kadro: [], yedek: [],
             startAt: now + baslangicDk * 60_000,
-            toplasmaAt: now + toplanmaDk * 60_000,
+            endAt: nextMidnight(),   // ⏰ gece 12 — kendini imha + rol temizliği
             code: kod,
-            roleId: config.etkinlikRoleId || null,
-            status: 'beklemede',
+            roleId: config.etkinlikRoleId,
+            status: baslangicDk === 0 ? 'basladi' : 'beklemede',
         };
 
-        const { embed, file } = buildEmbed(ev);
-        const payload = {
-            embeds: [embed],
-            components: [buildButtons()],
-            fetchReply: true,
-        };
-        if (file) payload.files = [new (require('discord.js').AttachmentBuilder)(file, { name: 'logo.png' })];
-
-        const message = await kanal.send(payload);
+        const message = await sendEventMessage(kanal, ev);
         ev.messageId = message.id;
         setActive(ev);
 
         // Zamanlayıcılar
-        const delayStart = ev.startAt - now;
-        const delayEnd = delayStart + sureSaat * 3600_000;
-        setTimeout(() => module.exports.startEvent(message.client), Math.max(1000, delayStart));
-        setTimeout(() => module.exports.endEvent(message.client), delayEnd);
+        if (ev.status === 'beklemede') {
+            setTimeout(() => module.exports.startEvent(interaction.client), Math.max(1000, ev.startAt - now));
+        }
+        setTimeout(() => module.exports.endEvent(interaction.client), Math.max(1000, ev.endAt - now));
 
-        await interaction.editReply(`✅ Etkinlik oluşturuldu: ${kanal} — Başlangıç <t:${Math.floor(ev.startAt / 1000)}:R>`);
+        await interaction.editReply(`✅ Etkinlik oluşturuldu: ${kanal} — **Gece 12'de** kendini imha edecek ve rolü geri çekecek.`);
     },
 
     /* ---------------- Buton handler ---------------- */
@@ -175,12 +176,11 @@ module.exports = {
 
         /* ---- KATIL ---- */
         if (interaction.customId === 'etk_katil') {
-            if (ev.status !== 'beklemede') {
-                return interaction.reply({ content: '❌ Etkinlik başladı, katılım kapandı!', ephemeral: true });
-            }
             if (ev.kadro.includes(userId) || ev.yedek.includes(userId)) {
                 return interaction.reply({ content: '⚠️ Zaten katıldın!', ephemeral: true });
             }
+            const started = ev.status !== 'beklemede';
+
             if (ev.kadro.length < ev.kadroMax) {
                 ev.kadro.push(userId);
                 setActive(ev);
@@ -192,29 +192,45 @@ module.exports = {
             } else {
                 return interaction.reply({ content: '❌ Kadro ve yedek dolu!', ephemeral: true });
             }
+
+            // Etkinlik başladıysa permi hemen ver + kodu DM ile gönder
+            if (started) {
+                const member = await interaction.guild.members.fetch(userId).catch(() => null);
+                if (member && ev.roleId && !member.roles.cache.has(ev.roleId)) {
+                    await member.roles.add(ev.roleId, 'Etkinlik katılımı').catch(() => { });
+                }
+                await sendCodeDM(member || { user: interaction.user }, ev).catch(() => { });
+            }
+
             await updateEmbed(interaction.client, ev);
-            return interaction.reply({ content: '✅ Etkinliğe katıldın!', ephemeral: true });
+            return interaction.reply({ content: started ? '✅ Etkinliğe katıldın — rol verildi, kod DM kutunda!' : '✅ Etkinliğe katıldın! Rol başlangıçta verilecek.', ephemeral: true });
         }
 
         /* ---- AYRIL ---- */
         if (interaction.customId === 'etk_ayril') {
-            const wasInKadro = ev.kadro.includes(userId);
-            const wasInYedek = ev.yedek.includes(userId);
-            if (!wasInKadro && !wasInYedek) {
+            const wasIn = ev.kadro.includes(userId) || ev.yedek.includes(userId);
+            if (!wasIn) {
                 return interaction.reply({ content: '⚠️ Zaten etkinlikte değilsin!', ephemeral: true });
             }
 
             ev.kadro = ev.kadro.filter(id => id !== userId);
             ev.yedek = ev.yedek.filter(id => id !== userId);
 
-            // Kadroda boşluk açıldıysa yedekten yükselt (etkinlik başlamadan önce)
-            if (ev.status === 'beklemede' && ev.kadro.length < ev.kadroMax && ev.yedek.length > 0) {
+            // Boşluk açıldıysa yedekten yükselt
+            if (ev.kadro.length < ev.kadroMax && ev.yedek.length > 0) {
                 const promoted = ev.yedek.shift();
                 ev.kadro.push(promoted);
+                if (ev.status !== 'beklemede' && ev.roleId) {
+                    const m = await interaction.guild.members.fetch(promoted).catch(() => null);
+                    if (m && !m.roles.cache.has(ev.roleId)) {
+                        await m.roles.add(ev.roleId, 'Yedekten kadroya yükseltildi').catch(() => { });
+                        await sendCodeDM(m, ev).catch(() => { });
+                    }
+                }
             }
 
             // Perm verilmişse geri al
-            if (ev.status !== 'beklemede' && ev.roleId) {
+            if (ev.roleId) {
                 const member = await interaction.guild.members.fetch(userId).catch(() => null);
                 if (member) await member.roles.remove(ev.roleId, 'Etkinlikten ayrıldı').catch(() => { });
             }
@@ -229,14 +245,13 @@ module.exports = {
             const started = ev.status !== 'beklemede';
             const embed = new EmbedBuilder()
                 .setColor('#2b6cb0')
-                .setTitle('ℹ️ ETKİNİK BİLGİLERİ')
+                .setTitle('ℹ️ ETKİNLİK BİLGİLERİ')
                 .setDescription(
-                    `✅ **${interaction.member}** — \`KADRO (silme)\` ${started ? 'VERİLDİ' : 'BAŞLANGIÇTA VERİLECEK'}\n` +
-                    `👥 **TOPLANMA:** <t:${Math.floor(ev.toplasmaAt / 1000)}:t>\n` +
-                    `🎯 **BİRTS:** <t:${Math.floor(ev.startAt / 1000)}:F> (<t:${Math.floor(ev.startAt / 1000)}:R>)\n` +
-                    `🔑 **ETKİNLİK KODU:** ${started ? `\`${ev.code}\`` : '`YOK`'}\n` +
-                    `⏳ **SÜRE:** \`${ev.sureSaat} SAAT\`\n\n` +
-                    `🚨 **BELİRTİLEN SAATTE OLMAYANLARIN YERİNE YEDEKLERDEN ALINACAKTIR.**`
+                    `✅ **${interaction.member}** — \`${ev.roleId ? 'ROL' : ''}\` ${started ? 'VERİLDİ' : 'BAŞLANGIÇTA VERİLECEK'}\n` +
+                    `🎯 **BAŞLANGIÇ:** <t:${Math.floor(ev.startAt / 1000)}:F> (<t:${Math.floor(ev.startAt / 1000)}:R>)\n` +
+                    `🌙 **BİTİŞ:** GECE 12 — <t:${Math.floor(ev.endAt / 1000)}:R>\n` +
+                    `🔑 **ETKİNLİK KODU:** ${started ? `\`${ev.code}\`` : '`BAŞLANGIÇTA DM İLE GÖNDERİLİR`'}\n\n` +
+                    `🚨 **GECE 12'DE ETKİNLİK MESAJI SİLİNECEK VE ROLÜ OLAN HERKESDEN ROL GERİ ÇEKİLECEK.**`
                 )
                 .setFooter({ text: BRAND })
                 .setTimestamp();
@@ -248,20 +263,9 @@ module.exports = {
             if (!isOwner(interaction, ev)) {
                 return interaction.reply({ content: '❌ Etkinliği sadece oluşturan yetkili veya bot sahipleri iptal edebilir!', ephemeral: true });
             }
-
-            // Perm verilmişse herkesten çek
-            if (ev.roleId) {
-                for (const id of [...ev.kadro, ...ev.yedek]) {
-                    const member = await interaction.guild.members.fetch(id).catch(() => null);
-                    if (member) await member.roles.remove(ev.roleId, 'Etkinlik iptal edildi').catch(() => { });
-                }
-            }
-
-            ev.status = 'iptal';
-            setActive(ev);
-            await updateEmbed(interaction.client, ev, '🛑 **ETKİNİLİK İPTAL EDİLDİ.**');
-            clearActive();
-            return interaction.reply({ content: '🛑 Etkinlik iptal edildi, verilen perm/rol geri çekildi.', ephemeral: true });
+            await interaction.deferReply({ ephemeral: true });
+            await module.exports.destroyEvent(interaction.client, '🛑 Etkinlik yetkili tarafından iptal edildi.');
+            return interaction.editReply('🛑 Etkinlik iptal edildi — mesaj silindi, tüm perm\'ler geri çekildi.');
         }
     },
 
@@ -285,64 +289,75 @@ module.exports = {
             ev.yedek = ev.yedek.filter(id => guild.members.cache.has(id));
             setActive(ev);
 
-            const dmEmbed = new EmbedBuilder()
-                .setColor('#2b6cb0')
-                .setTitle('✅ ETKİNİK BİLGİLERİ')
-                .setDescription(
-                    `🔥 **${guild.members.cache.get(Object.values(ev.kadro)[0] || '') ? '' : ''}${BRAND} Kadro (silme) VERİLDİ**\n` +
-                    `👥 **TOPLANMA:** <t:${Math.floor(ev.toplasmaAt / 1000)}:t>\n` +
-                    `🎯 **BİRTS:** <t:${Math.floor(ev.startAt / 1000)}:F>\n` +
-                    `⏳ **SÜRE:** \`${ev.sureSaat} SAAT\`\n` +
-                    `🔑 **ETKİNLİK KODU:** \`${ev.code}\`\n\n` +
-                    `🚨 **BELİRTİLEN SAATTE OLMAYANLARIN YERİNE YEDEKLERDEN ALINACAKTIR.**`
-                )
-                .setFooter({ text: BRAND });
-
-            // Role ver + DM at
+            // Rol ver + kod DM'i
             for (const id of [...ev.kadro, ...ev.yedek]) {
                 const member = guild.members.cache.get(id);
                 if (!member) continue;
-
                 if (role && !member.roles.cache.has(role.id)) {
                     await member.roles.add(role, 'Etkinlik katılımı').catch(() => { });
                 }
-                await member.send({ embeds: [dmEmbed] }).catch(() => { });
+                await sendCodeDM(member, ev).catch(() => { });
             }
 
             await updateEmbed(client, ev);
 
-            // Süre bitiş zamanlayıcısı (resume sonrası da buradan kurulur)
-            const remaining = ev.startAt + ev.sureSaat * 3600_000 - Date.now();
+            // Gece 12 zamanlayıcısı (resume sonrası da buradan kurulur)
+            const remaining = ev.endAt - Date.now();
             if (remaining > 0) {
                 setTimeout(() => module.exports.endEvent(client), remaining);
+            } else {
+                setTimeout(() => module.exports.endEvent(client), 1000);
             }
         } catch (e) {
             console.error('[ETKİNİLİK] Başlatma hatası:', e);
         }
     },
 
-    /* ---------------- Bitirme ---------------- */
+    /* ---------------- Kendini imha (gece 12) ---------------- */
     async endEvent(client) {
         const ev = getActive();
-        if (!ev || ev.status === 'beklemede' || ev.status === 'bitti' || ev.status === 'iptal') return;
+        if (!ev || ev.status === 'bitti' || ev.status === 'iptal') return;
+        await module.exports.destroyEvent(client, null);
+    },
+
+    /**
+     * Mesajı siler, seçilen roldeki TÜM kişilerden rolü geri çeker, veriyi temizler.
+     */
+    async destroyEvent(client, customNote) {
+        const ev = getActive();
+        if (!ev) return;
 
         try {
-            if (ev.roleId) {
-                const guild = client.guilds.cache.get(ev.guildId);
-                if (guild) {
-                    for (const id of [...ev.kadro, ...ev.yedek]) {
-                        const member = guild.members.cache.get(id);
-                        if (member) await member.roles.remove(ev.roleId, 'Etkinlik süresi doldu').catch(() => { });
+            const guild = client.guilds.cache.get(ev.guildId);
+
+            // 1) Rolü OLAN herkesten rolü geri çek (sadece katılımcı listesi değil — roldaki herkes)
+            if (ev.roleId && guild) {
+                await guild.members.fetch().catch(() => { });
+                const role = guild.roles.cache.get(ev.roleId);
+                if (role) {
+                    const holders = guild.members.cache.filter(m => m.roles.cache.has(ev.roleId));
+                    for (const [, member] of holders) {
+                        await member.roles.remove(ev.roleId, 'Etkinlik sona erdi (gece 12 — kendini imha)').catch(() => { });
                     }
+                    console.log(`[ETKİNİLİK] ${holders.size} kişiden rol geri çekildi.`);
                 }
             }
 
-            ev.status = 'bitti';
-            setActive(ev);
-            await updateEmbed(client, ev, `🏁 **ETKİNİK TAMAMLANDI — Süre doldu, kadro permi geri çekildi.**`);
+            // 2) Mesajı sil (kendini imha)
+            if (guild) {
+                const channel = await client.channels.fetch(ev.channelId).catch(() => null);
+                if (channel && channel.isTextBased()) {
+                    const message = await channel.messages.fetch(ev.messageId).catch(() => null);
+                    if (message) await message.delete().catch(() => { });
+                }
+            }
+
+            // 3) Veriyi temizle
             clearActive();
+            console.log(`[ETKİNİLİK] Etkinlik kendini imha etti.${customNote ? ' (' + customNote + ')' : ''}`);
         } catch (e) {
-            console.error('[ETKİNİLİK] Bitirme hatası:', e);
+            console.error('[ETKİNİLİK] Kendini imha hatası:', e);
+            clearActive(); // hata olsa bile veriyi bırakma
         }
     },
 
@@ -361,28 +376,42 @@ module.exports = {
             if (ev.status === 'beklemede') {
                 if (ev.startAt > now) {
                     setTimeout(() => module.exports.startEvent(client), ev.startAt - now);
-                    setTimeout(() => module.exports.endEvent(client), ev.startAt + ev.sureSaat * 3600_000 - now);
-                    console.log(`[INFO] Etkinlik devam ettirildi (başlangıç <t:${Math.floor(ev.startAt / 1000)}:R>).`);
                 } else {
                     // Başlangıç zamanı bot kapalıyken geçti -> hemen başlat
                     module.exports.startEvent(client);
+                    return;
                 }
-            } else if (ev.status === 'basladi') {
-                const remaining = ev.startAt + ev.sureSaat * 3600_000 - now;
-                if (remaining > 0) {
-                    setTimeout(() => module.exports.endEvent(client), remaining);
-                    console.log('[INFO] Etkinlik (başlamış) devam ettirildi.');
-                } else {
-                    module.exports.endEvent(client);
-                }
+            }
+
+            // Gece 12 zamanlayıcısı
+            if (ev.endAt > now) {
+                setTimeout(() => module.exports.endEvent(client), ev.endAt - now);
+                console.log(`[INFO] Etkinlik devam ettirildi (bitiş: gece 12, ${Math.round((ev.endAt - now) / 60000)} dk sonra).`);
             } else {
-                clearActive();
+                module.exports.endEvent(client);
             }
         } catch (e) {
             console.error('[ETKİNİLİK] Devam ettirme hatası:', e);
         }
     },
 };
+
+/* ---------------- Kod DM'i ---------------- */
+async function sendCodeDM(member, ev) {
+    if (!member?.user) return;
+    const embed = new EmbedBuilder()
+        .setColor('#2b6cb0')
+        .setTitle('✅ ETKİNLİK BİLGİLERİ')
+        .setDescription(
+            `🔥 **${BRAND}** Etkinlik rolü verildi!\n` +
+            `🎯 **BAŞLANGIÇ:** <t:${Math.floor(ev.startAt / 1000)}:F>\n` +
+            `🌙 **BİTİŞ:** GECE 12 — <t:${Math.floor(ev.endAt / 1000)}:R>\n` +
+            `🔑 **ETKİNLİK KODU:** \`${ev.code}\`\n\n` +
+            `🚨 **GECE 12'DE ROL GERİ ALINACAKTIR.**`
+        )
+        .setFooter({ text: BRAND });
+    return member.user.send({ embeds: [embed] }).catch(() => { });
+}
 
 /* ---------------- Sunucudan ayrılan katılımcıyı düşür ---------------- */
 module.exports.handleMemberLeave = async function (member) {
@@ -398,8 +427,8 @@ module.exports.handleMemberLeave = async function (member) {
         ev.kadro = ev.kadro.filter(id => id !== member.id);
         ev.yedek = ev.yedek.filter(id => id !== member.id);
 
-        // Başlamadan önce ayrıldıysa yedekten kadroya yükselt
-        if (ev.status === 'beklemede' && ev.kadro.length < ev.kadroMax && ev.yedek.length > 0) {
+        // Boşluk açıldıysa yedekten kadroya yükselt
+        if (ev.kadro.length < ev.kadroMax && ev.yedek.length > 0) {
             const promoted = ev.yedek.shift();
             ev.kadro.push(promoted);
         }
@@ -423,8 +452,8 @@ async function updateEmbed(client, ev, extraLine = null) {
             embed.setDescription(`${embed.data.description ?? ''}\n\n${extraLine}`);
         }
 
-        const payload = { embeds: [embed], components: ev.status === 'beklemede' ? [buildButtons()] : [] };
-        if (file) payload.attachments = [new (require('discord.js').AttachmentBuilder)(file, { name: 'logo.png' })];
+        const payload = { embeds: [embed], components: [buildButtons()] };
+        if (file) payload.attachments = [new AttachmentBuilder(file, { name: 'logo.png' })];
 
         await message.edit(payload).catch(() => { });
     } catch (e) {
