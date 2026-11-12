@@ -237,29 +237,27 @@ module.exports = {
                 .setFooter({ text: config.footer.text, iconURL: interaction.client.user.displayAvatarURL({ size: 256 }) })
                 .setTimestamp();
 
-            // İkinci embed (Sorular)
-            const questionsEmbed = new EmbedBuilder()
-                .setTitle('**Ekip Başvuru Soruları**')
-                .setDescription(
-                    '• Nick ve yaş\n' +
-                    '• Önceki ekipleriniz\n' +
-                    '• Aktiflik durumunuz.\n' +
-                    '• Steam profil linkiniz.\n' +
-                    '• Povlarınız varsa videonuz.\n' +
-                    '• FiveM saatiniz.\n' +
-                    '• Sistem özellikleriniz.'
-                )
-                .setColor("#1e1f22")
-                .setFooter({ text: config.footer.text, iconURL: interaction.client.user.displayAvatarURL({ size: 256 }) })
-                .setTimestamp();
+            // İkinci embed (Sorular) — istek üzerine kaldırıldı
 
-            // Ticket kapatma select menu
+            // Ticket işlemleri select menu
             const closeSelect = new ActionRowBuilder()
                 .addComponents(
                     new StringSelectMenuBuilder()
                         .setCustomId('ticket_close')
-                        .setPlaceholder('Ticket\'ı Kapatmak İçin Tıkla!')
+                        .setPlaceholder('İşlem Seç!')
                         .addOptions([
+                            {
+                                label: 'Yetkili Sahiplen',
+                                value: 'claim_ticket',
+                                description: 'Bu ticketı sahiplen ve ilgilen',
+                                emoji: '🙋'
+                            },
+                            {
+                                label: 'Yetkili Beklemeye Al',
+                                value: 'hold_ticket',
+                                description: 'Ticketı bekleme listesine al',
+                                emoji: '⏳'
+                            },
                             {
                                 label: 'Ticket Kapat',
                                 value: 'close_ticket',
@@ -271,9 +269,21 @@ module.exports = {
 
             await ticketChannel.send({
                 content: mentions,
-                embeds: [ticketCreatedEmbed, questionsEmbed],
+                embeds: [ticketCreatedEmbed],
                 components: [closeSelect]
             });
+
+            // Ticket kaydını oluştur
+            const ticketsData = loadTicketData();
+            if (!ticketsData.tickets) ticketsData.tickets = {};
+            ticketsData.tickets[ticketChannel.id] = {
+                number: ticketNumber,
+                ownerId: user.id,
+                createdAt: new Date().toISOString(),
+                status: 'acik',
+                claimedBy: null,
+            };
+            saveTicketData(ticketsData);
 
             await interaction.reply({
                 content: `✅ Ticket kanalınız oluşturuldu: ${ticketChannel}`,
@@ -291,18 +301,124 @@ module.exports = {
         }
     },
 
-    // Select menu handler'ı (ticket kapatma)
+    // Select menu handler'ı (ticket işlemleri: sahiplen / beklemeye al / kapat)
     async handleSelectMenu(interaction) {
         try {
             if (interaction.customId !== 'ticket_close') return;
 
-            if (interaction.values[0] === 'close_ticket') {
-                const channel = interaction.channel;
+            const channel = interaction.channel;
+
+            // Yetkili mi? (sahiplen/beklemeye al/kapat için gerekli)
+            const isOwnerUser = config.ownerId.includes(interaction.user.id);
+            const isOwnerRole = config.ownerRoleId && interaction.member?.roles?.cache?.has(config.ownerRoleId);
+            const hasManage = interaction.member?.permissions?.has?.(PermissionFlagsBits.ManageGuild);
+            const isStaff = isOwnerUser || isOwnerRole || hasManage;
+
+            const action = interaction.values[0];
+
+            /* ---------------- YETKİLİ SAHİPLEN ---------------- */
+            if (action === 'claim_ticket') {
+                if (!isStaff) {
+                    return interaction.reply({
+                        content: '❌ Bu işlemi sadece yetkililer yapabilir!',
+                        ephemeral: true
+                    });
+                }
+
+                const ticketsData = loadTicketData();
+                const record = ticketsData.tickets?.[channel.id];
+
+                if (record?.claimedBy && record.claimedBy !== interaction.user.id) {
+                    return interaction.reply({
+                        content: `⚠️ Bu ticket zaten <@${record.claimedBy}> tarafından sahiplenilmiş!`,
+                        ephemeral: true
+                    });
+                }
+
+                if (record) {
+                    record.claimedBy = interaction.user.id;
+                    record.claimedAt = new Date().toISOString();
+                    record.status = 'sahiplenildi';
+                    saveTicketData(ticketsData);
+                }
+
+                // Kanal adına ✅ ekle (sahiplenildi işareti)
+                if (!channel.name.startsWith('✅')) {
+                    await channel.setName(`✅┇${channel.name.replace(/^[^a-zA-Z0-9]+/, '')}`).catch(() => { });
+                }
+
+                const claimEmbed = new EmbedBuilder()
+                    .setColor('#1abc9c')
+                    .setTitle('🙋 Ticket Sahiplenildi')
+                    .setDescription(
+                        `👤 **Sahiplenen Yetkili:** ${interaction.user}\n` +
+                        `📅 **Sahiplenme Zamanı:** <t:${Math.floor(Date.now() / 1000)}:F>\n\n` +
+                        `_Bu ticket artık ${interaction.user} tarafından yönetilecek._`
+                    )
+                    .setFooter({ text: config.footer.text })
+                    .setTimestamp();
+
+                return interaction.reply({ embeds: [claimEmbed] });
+            }
+
+            /* ---------------- BEKLEMEYE AL ---------------- */
+            if (action === 'hold_ticket') {
+                if (!isStaff) {
+                    return interaction.reply({
+                        content: '❌ Bu işlemi sadece yetkililer yapabilir!',
+                        ephemeral: true
+                    });
+                }
+
+                const ticketsData = loadTicketData();
+                const record = ticketsData.tickets?.[channel.id];
+                if (record) {
+                    record.status = 'beklemede';
+                    saveTicketData(ticketsData);
+                }
+
+                // Kanal adına ⏳ ekle
+                if (!channel.name.startsWith('⏳')) {
+                    await channel.setName(`⏳┇${channel.name.replace(/^[^a-zA-Z0-9]+/, '')}`).catch(() => { });
+                }
+
+                const holdEmbed = new EmbedBuilder()
+                    .setColor('#f1c40f')
+                    .setTitle('⏳ Ticket Beklemeye Alındı')
+                    .setDescription(
+                        `👮 **Alan Yetkili:** ${interaction.user}\n` +
+                        `📅 **Zaman:** <t:${Math.floor(Date.now() / 1000)}:F>\n\n` +
+                        `_Başvuru inceleniyor. Sonuç belli olduğunda buradan bildirilecek._`
+                    )
+                    .setFooter({ text: config.footer.text })
+                    .setTimestamp();
+
+                return interaction.reply({ embeds: [holdEmbed] });
+            }
+
+            /* ---------------- TICKET KAPAT ---------------- */
+            if (action === 'close_ticket') {
+                // Ticket sahibi veya yetkili kapatabilsin
+                const ticketsData = loadTicketData();
+                const record = ticketsData.tickets?.[channel.id];
+                const isTicketOwner = record?.ownerId === interaction.user.id;
+
+                if (!isStaff && !isTicketOwner) {
+                    return interaction.reply({
+                        content: '❌ Bu ticketı sadece sahibi veya yetkililer kapatabilir!',
+                        ephemeral: true
+                    });
+                }
 
                 await interaction.reply({
-                    content: '⏳ Ticket kapatılıyor...',
-                    ephemeral: false
+                    content: `🔒 Ticket ${interaction.user} tarafından kapatılıyor...`,
                 });
+
+                // Kaydı temizle
+                if (record) {
+                    delete ticketsData.tickets[channel.id];
+                    saveTicketData(ticketsData);
+                }
 
                 // Kısa bir gecikme sonrası kanalı sil
                 setTimeout(async () => {
@@ -315,10 +431,10 @@ module.exports = {
             }
 
         } catch (error) {
-            console.error('Ticket kapatma hatası:', error);
+            console.error('Ticket işlem hatası:', error);
             if (!interaction.replied) {
                 interaction.reply({
-                    content: '❌ Ticket kapatılırken bir hata oluştu!',
+                    content: '❌ Ticket işlemi sırasında bir hata oluştu!',
                     ephemeral: true
                 }).catch(() => { });
             }
