@@ -193,7 +193,7 @@ async function makeSecurityCard({ avatarURL, dateText, isTrusted }) {
 }
 
 /* --------------- Hoşgeldin banner (resimdeki gibi) --------------- */
-async function buildWelcomeBanner() {
+async function buildWelcomeBanner(member) {
   const W = 800, H = 380;
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
@@ -208,25 +208,23 @@ async function buildWelcomeBanner() {
   roundedRect(ctx, 20, 20, W - 40, H - 40, 20);
   ctx.fill();
 
-  // SHYZAM logosu (renkleri ters çevrilir: açık zemin -> siyah, logo -> beyaz)
-  const logoPath = path.join(__dirname, '../Sanzy_logosu_ve_ylan_detaylar.png');
-  const logo = await loadImage(logoPath);
-  const lc = createCanvas(logo.width, logo.height);
-  const lctx = lc.getContext('2d');
-  lctx.drawImage(logo, 0, 0);
-  const imgData = lctx.getImageData(0, 0, logo.width, logo.height);
-  const px = imgData.data;
-  for (let i = 0; i < px.length; i += 4) {
-    px[i] = 255 - px[i];
-    px[i + 1] = 255 - px[i + 1];
-    px[i + 2] = 255 - px[i + 2];
-  }
-  lctx.putImageData(imgData, 0, 0);
+  // Giren kişinin profil fotoğrafı (dairesel)
+  const avatarURL = member.user.displayAvatarURL({ forceStatic: true, extension: 'png', size: 256 });
+  const avSize = 150;
+  const avCX = W / 2, avCY = 140;
+  const avatar = await loadImage(avatarURL);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(avCX, avCY, avSize / 2, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.drawImage(avatar, avCX - avSize / 2, avCY - avSize / 2, avSize, avSize);
+  ctx.restore();
 
-  const boxW = 260, boxH = 170;
-  const scale = Math.min(boxW / logo.width, boxH / logo.height);
-  const lw = logo.width * scale, lh = logo.height * scale;
-  ctx.drawImage(lc, (W - lw) / 2, 40 + (boxH - lh) / 2, lw, lh);
+  ctx.beginPath();
+  ctx.arc(avCX, avCY, avSize / 2 + 4, 0, Math.PI * 2);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 5;
+  ctx.stroke();
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -266,8 +264,8 @@ module.exports = {
       const displayName = member.user.globalName || member.user.username;
       const acilisTarihi = createdAt.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-      // Resimdeki gibi banner üret
-      const bannerBuffer = await buildWelcomeBanner();
+      // Resimdeki gibi banner üret (giren kişinin profil fotoğrafıyla)
+      const bannerBuffer = await buildWelcomeBanner(member);
       const bannerAttachment = new AttachmentBuilder(bannerBuffer, { name: 'welcome.png' });
 
       const embed = new EmbedBuilder()
