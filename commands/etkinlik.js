@@ -1,8 +1,7 @@
 // commands/etkinlik.js
 // In-game etkinlik yoklama sistemi — RAGE Crew tarzı
-// KATIL / AYRIL / BİLGİ / İPTAL butonları + otomatik rol (perm) + etkinlik kodu DM
-// Etkinlik GECE 12'ye kadar sürer → o saatte mesaj silinir (kendini imha),
-// seçilen roldeki TÜM kişilerden rol geri çekilir, veri temizlenir.
+// Butonlar: ✅ ᴋᴀᴛıʟ / ❌ ᴀʏʀɪʟ / ℹ️ ʙɪʟɢɪ / ⛔ ɪ̇ᴘᴛᴀʟ ᴇᴛ
+// Liste alfabetik sıralı, DM gitmez, gece 12'de kendini imha eder.
 const {
     SlashCommandBuilder, EmbedBuilder, ActionRowBuilder,
     ButtonBuilder, ButtonStyle, ChannelType, AttachmentBuilder
@@ -46,16 +45,26 @@ function nextMidnight() {
     return d.getTime();
 }
 
-/* ---------------- Türkçe tarih/saat ---------------- */
-const trDate = (d = new Date()) =>
-    new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d);
+/* ---------------- Alfabetik sıralama ---------------- */
+function sortByIdsAlphabetically(ids, guild) {
+    return [...ids].sort((a, b) => {
+        const ma = guild?.members?.cache?.get(a);
+        const mb = guild?.members?.cache?.get(b);
+        const na = (ma?.displayName || ma?.user?.username || a).toLowerCase();
+        const nb = (mb?.displayName || mb?.user?.username || b).toLowerCase();
+        return na.localeCompare(nb, 'tr');
+    });
+}
 
 /* ---------------- Embed ---------------- */
 function buildEmbed(ev, guild) {
     const started = ev.status !== 'beklemede';
 
-    const kadroList = ev.kadro.map((id, i) => `${i + 1}. <@${id}>`).join('\n') || '_Henüz katılım yok_';
-    const yedekList = ev.yedek.length ? ev.yedek.map((id, i) => `${i + 1}. <@${id}>`).join('\n') : '_Yedek yok_';
+    const sortedKadro = sortByIdsAlphabetically(ev.kadro, guild);
+    const sortedYedek = sortByIdsAlphabetically(ev.yedek, guild);
+
+    const kadroList = sortedKadro.map((id, i) => `${i + 1}. <@${id}>`).join('\n') || '_Henüz katılım yok_';
+    const yedekList = sortedYedek.length ? sortedYedek.map((id, i) => `${i + 1}. <@${id}>`).join('\n') : '_Yedek yok_';
 
     const embed = new EmbedBuilder()
         .setColor('#2b2d31')
@@ -82,15 +91,15 @@ function buildEmbed(ev, guild) {
 
 function buildButtons() {
     return new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('etk_katil').setLabel('KATIL').setStyle(ButtonStyle.Success).setEmoji('✅'),
-        new ButtonBuilder().setCustomId('etk_ayril').setLabel('AYRIL').setStyle(ButtonStyle.Danger).setEmoji('❌'),
-        new ButtonBuilder().setCustomId('etk_bilgi').setLabel('BİLGİ').setStyle(ButtonStyle.Primary).setEmoji('ℹ️'),
-        new ButtonBuilder().setCustomId('etk_iptal').setLabel('İPTAL ET').setStyle(ButtonStyle.Secondary).setEmoji('⛔'),
+        new ButtonBuilder().setCustomId('etk_katil').setLabel('ᴋᴀᴛıʟ').setStyle(ButtonStyle.Success).setEmoji('✅'),
+        new ButtonBuilder().setCustomId('etk_ayril').setLabel('ᴀʏʀɪʟ').setStyle(ButtonStyle.Danger).setEmoji('❌'),
+        new ButtonBuilder().setCustomId('etk_bilgi').setLabel('ʙɪʟɢɪ').setStyle(ButtonStyle.Primary).setEmoji('ℹ️'),
+        new ButtonBuilder().setCustomId('etk_iptal').setLabel('ɪ̇ᴘᴛᴀʟ ᴇᴛ').setStyle(ButtonStyle.Secondary).setEmoji('⛔'),
     );
 }
 
 async function sendEventMessage(kanal, ev) {
-    const { embed, file } = buildEmbed(ev);
+    const { embed, file } = buildEmbed(ev, kanal.guild);
     const payload = { embeds: [embed], components: [buildButtons()], fetchReply: true };
     if (file) payload.files = [new AttachmentBuilder(file, { name: 'logo.png' })];
     return kanal.send(payload);
