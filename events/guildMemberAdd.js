@@ -192,6 +192,54 @@ async function makeSecurityCard({ avatarURL, dateText, isTrusted }) {
   return canvas.toBuffer('image/png');
 }
 
+/* --------------- Hoşgeldin banner (resimdeki gibi) --------------- */
+async function buildWelcomeBanner() {
+  const W = 800, H = 380;
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext('2d');
+
+  // beyaz çerçeve
+  ctx.fillStyle = '#ffffff';
+  roundedRect(ctx, 8, 8, W - 16, H - 16, 28);
+  ctx.fill();
+
+  // siyah iç alan
+  ctx.fillStyle = '#000000';
+  roundedRect(ctx, 20, 20, W - 40, H - 40, 20);
+  ctx.fill();
+
+  // SHYZAM logosu (renkleri ters çevrilir: açık zemin -> siyah, logo -> beyaz)
+  const logoPath = path.join(__dirname, '../Sanzy_logosu_ve_ylan_detaylar.png');
+  const logo = await loadImage(logoPath);
+  const lc = createCanvas(logo.width, logo.height);
+  const lctx = lc.getContext('2d');
+  lctx.drawImage(logo, 0, 0);
+  const imgData = lctx.getImageData(0, 0, logo.width, logo.height);
+  const px = imgData.data;
+  for (let i = 0; i < px.length; i += 4) {
+    px[i] = 255 - px[i];
+    px[i + 1] = 255 - px[i + 1];
+    px[i + 2] = 255 - px[i + 2];
+  }
+  lctx.putImageData(imgData, 0, 0);
+
+  const boxW = 260, boxH = 170;
+  const scale = Math.min(boxW / logo.width, boxH / logo.height);
+  const lw = logo.width * scale, lh = logo.height * scale;
+  ctx.drawImage(lc, (W - lw) / 2, 40 + (boxH - lh) / 2, lw, lh);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 44px sans-serif';
+  ctx.fillText('Hoşgeldin !!', W / 2, 262);
+  ctx.fillStyle = '#cfd7dd';
+  ctx.font = '22px sans-serif';
+  ctx.fillText('sunucumuza hoşgeldin , iyi eğlenceler', W / 2, 312);
+
+  return canvas.toBuffer('image/png');
+}
+
 // Canvas API'ye yuvarlatılmış rect desteği ekleme
 CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
   this.beginPath();
@@ -218,31 +266,25 @@ module.exports = {
       const displayName = member.user.globalName || member.user.username;
       const acilisTarihi = createdAt.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
+      // Resimdeki gibi banner üret
+      const bannerBuffer = await buildWelcomeBanner();
+      const bannerAttachment = new AttachmentBuilder(bannerBuffer, { name: 'welcome.png' });
+
       const embed = new EmbedBuilder()
-        .setAuthor({
-          name: `${member.guild.name} - Hoş geldiniz !!`,
-          iconURL: member.guild.iconURL({ size: 256 }) || undefined
-        })
-        .setDescription('⚠️ Merhabalar, Sunucuya Hoşgeldin. İyi Eğlenceler Diler..')
-        .addFields(
-          { name: '🔹 Kullanıcı:', value: `${member} - _${displayName}_` },
-          { name: '🔹 Discord ID:', value: `${member.id}` },
-          { name: '🔹 Hesap Açılış Tarihi:', value: `${acilisTarihi}` },
-          { name: '🔹 Hesap Güvenliği:', value: statusText }
+        .setTitle(`**${member.guild.name} - Hoş geldiniz !!**`)
+        .setDescription(
+          `⚠️ Merhabalar, Sunucuya Hoşgeldin. Sunucuya Giriş Yaptığın İçin Sana Oto-Rol Verdim, İyi Eğlenceler Diler..\n\n` +
+          `🔹 **Kullanıcı:** ${member} - _${displayName}_\n` +
+          `🔹 **Discord ID:** ${member.id}\n` +
+          `🔹 **Hesap Açılış Tarihi:** ${acilisTarihi}\n` +
+          `🔹 **Hesap Güvenliği:** ${statusText}`
         )
-        .setColor('#2b2d31')
-        .setThumbnail(member.guild.iconURL({ size: 256 }))
-        .setFooter({ text: cfg.footer.text, iconURL: member.guild.iconURL({ size: 256 }) });
+        .setColor('#000000')
+        .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
+        .setImage('attachment://welcome.png')
+        .setFooter({ text: cfg.footer.text });
 
-      // SHYZAM banner'ı mesajın görseli olsun
-      const logoPath = path.join(__dirname, '../Sanzy_logosu_ve_ylan_detaylar.png');
-      const payload = { embeds: [embed] };
-      if (fs.existsSync(logoPath)) {
-        embed.setImage('attachment://shyzam.png');
-        payload.files = [new AttachmentBuilder(logoPath, { name: 'shyzam.png' })];
-      }
-
-      await member.user.send(payload);
+      await member.user.send({ embeds: [embed], files: [bannerAttachment] });
 
       const avatarURL = member.user.displayAvatarURL({ forceStatic: true, extension: 'png', size: 256 });
       const dateTR = createdAt.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
