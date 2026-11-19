@@ -40,6 +40,14 @@ const PLAN = [
     successText: "Ticket log sistemi başarıyla {AKSİYON}."
   },
   {
+    category: "</ TICKET YT LOG />",
+    color: COLORS.step,
+    channels: [
+      { name: "zrtyt-log", emoji: "📺" }
+    ],
+    successText: "Ticket yt log sistemi başarıyla {AKSİYON}."
+  },
+  {
     category: "</ CEZA LOG />",
     color: COLORS.step,
     channels: [
