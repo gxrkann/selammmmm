@@ -1,5 +1,5 @@
 // commands/etkinlik.js
-// In-game etkinlik yoklama sistemi
+// In-game etkinlik yoklama sistemi — RAGE Crew tarzı
 // KATIL / AYRIL / BİLGİ / İPTAL butonları + otomatik rol (perm) + etkinlik kodu DM
 // Etkinlik GECE 12'ye kadar sürer → o saatte mesaj silinir (kendini imha),
 // seçilen roldeki TÜM kişilerden rol geri çekilir, veri temizlenir.
@@ -42,36 +42,34 @@ function isOwner(interaction, ev) {
 /* ---------------- Gece 12 (ertesi 00:00) hesabı ---------------- */
 function nextMidnight() {
     const d = new Date();
-    d.setHours(24, 0, 0, 0); // bugünün ertesi gece 00:00 (yerel saat)
+    d.setHours(24, 0, 0, 0);
     return d.getTime();
 }
 
-/* ---------------- Embed ---------------- */
-function buildEmbed(ev) {
-    const started = ev.status !== 'beklemede';
+/* ---------------- Türkçe tarih/saat ---------------- */
+const trDate = (d = new Date()) =>
+    new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d);
 
-    const desc =
-        `<@&${ev.roleId}> etkinlik rolü verildi. Ayrılınca veya **gece 12'de** geri alınır.` +
-        (started ? `\n\n✅ **ETKİNLİK BAŞLADI — Rol verildi.**` : '');
+/* ---------------- Embed ---------------- */
+function buildEmbed(ev, guild) {
+    const started = ev.status !== 'beklemede';
 
     const kadroList = ev.kadro.map((id, i) => `${i + 1}. <@${id}>`).join('\n') || '_Henüz katılım yok_';
     const yedekList = ev.yedek.length ? ev.yedek.map((id, i) => `${i + 1}. <@${id}>`).join('\n') : '_Yedek yok_';
 
     const embed = new EmbedBuilder()
         .setColor('#2b2d31')
-        .setTitle(`${BRAND.toUpperCase()}_YOKLAMA`)
-        .setDescription(desc)
+        .setTitle(`@${BRAND}-YOKLAMA`)
+        .setDescription('Kadrola (silme) VERİLDİR. AYRILINCA VE SÜRE BİTİNCE ALINIR.')
         .addFields(
-            { name: '• KADRO:', value: `\`${ev.kadro.length}/${ev.kadroMax}\``, inline: true },
-            { name: '• YEDEK:', value: `\`${ev.yedek.length}/${ev.yedekMax}\``, inline: true },
-            { name: '\u200b', value: '\u200b', inline: true },
-            { name: '• BAŞLANGIÇ:', value: `<t:${Math.floor(ev.startAt / 1000)}:F>\n<t:${Math.floor(ev.startAt / 1000)}:R>`, inline: true },
-            { name: '• BİTİŞ:', value: `🌙 **GECE 12**\n<t:${Math.floor(ev.endAt / 1000)}:R>`, inline: true },
-            { name: '\u200b', value: '\u200b', inline: true },
+            { name: '🔴 KADRO:', value: `\`${ev.kadro.length}/${ev.kadroMax}\``, inline: true },
+            { name: '🟡 YEDEK:', value: `\`${ev.yedek.length}/${ev.yedekMax}\``, inline: true },
+            { name: '🔹 BİTİŞ:', value: `🌙 GECE 12\n<t:${Math.floor(ev.endAt / 1000)}:R>`, inline: true },
+            { name: '🔹 TOPLANMA:', value: `<t:${Math.floor(ev.toplasmaAt / 1000)}:t>`, inline: true },
             { name: `KADRO (${ev.kadro.length})`, value: kadroList.slice(0, 1024) },
             { name: `YEDEK (${ev.yedek.length})`, value: yedekList.slice(0, 1024) },
         )
-        .setFooter({ text: BRAND })
+        .setFooter({ text: `KATILINCA (@${BRAND} Kadro (silme) VERİLİR. AYRILINCA VE SÜRE BİTİNCE ALINIR.)` })
         .setTimestamp();
 
     const logoPath = path.join(__dirname, '../Sanzy_logosu_ve_ylan_detaylar.png');
@@ -84,10 +82,10 @@ function buildEmbed(ev) {
 
 function buildButtons() {
     return new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('etk_katil').setLabel('KATIL').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('etk_ayril').setLabel('AYRIL').setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId('etk_bilgi').setLabel('BİLGİ').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('etk_iptal').setLabel('İPTAL ET').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('etk_katil').setLabel('KATIL').setStyle(ButtonStyle.Success).setEmoji('✅'),
+        new ButtonBuilder().setCustomId('etk_ayril').setLabel('AYRIL').setStyle(ButtonStyle.Danger).setEmoji('❌'),
+        new ButtonBuilder().setCustomId('etk_bilgi').setLabel('BİLGİ').setStyle(ButtonStyle.Primary).setEmoji('ℹ️'),
+        new ButtonBuilder().setCustomId('etk_iptal').setLabel('İPTAL ET').setStyle(ButtonStyle.Secondary).setEmoji('⛔'),
     );
 }
 
@@ -110,7 +108,6 @@ module.exports = {
         .addChannelOption(o => o.setName('kanal').setDescription('Mesajın gönderileceği kanal (boş: bu kanal)')),
 
     async execute(interaction) {
-        // Sadece owner / boss
         const isOwnerUser = config.ownerId.includes(interaction.user.id);
         const isOwnerRole = config.ownerRoleId && interaction.member?.roles?.cache?.has(config.ownerRoleId);
         if (!isOwnerUser && !isOwnerRole) {
@@ -146,17 +143,17 @@ module.exports = {
             kadroMax, yedekMax,
             kadro: [], yedek: [],
             startAt: now + baslangicDk * 60_000,
-            endAt: nextMidnight(),   // ⏰ gece 12 — kendini imha + rol temizliği
+            endAt: nextMidnight(),
             code: kod,
             roleId: config.etkinlikRoleId,
             status: baslangicDk === 0 ? 'basladi' : 'beklemede',
+            toplasmaAt: now + (baslangicDk >= 10 ? (baslangicDk - 10) * 60_000 : now)
         };
 
         const message = await sendEventMessage(kanal, ev);
         ev.messageId = message.id;
         setActive(ev);
 
-        // Zamanlayıcılar
         if (ev.status === 'beklemede') {
             setTimeout(() => module.exports.startEvent(interaction.client), Math.max(1000, ev.startAt - now));
         }
@@ -193,7 +190,6 @@ module.exports = {
                 return interaction.reply({ content: '❌ Kadro ve yedek dolu!', ephemeral: true });
             }
 
-            // Etkinlik başladıysa permi hemen ver
             if (started) {
                 const member = await interaction.guild.members.fetch(userId).catch(() => null);
                 if (member && ev.roleId && !member.roles.cache.has(ev.roleId)) {
@@ -215,7 +211,6 @@ module.exports = {
             ev.kadro = ev.kadro.filter(id => id !== userId);
             ev.yedek = ev.yedek.filter(id => id !== userId);
 
-            // Boşluk açıldıysa yedekten yükselt
             if (ev.kadro.length < ev.kadroMax && ev.yedek.length > 0) {
                 const promoted = ev.yedek.shift();
                 ev.kadro.push(promoted);
@@ -227,7 +222,6 @@ module.exports = {
                 }
             }
 
-            // Perm verilmişse geri al
             if (ev.roleId) {
                 const member = await interaction.guild.members.fetch(userId).catch(() => null);
                 if (member) await member.roles.remove(ev.roleId, 'Etkinlikten ayrıldı').catch(() => { });
@@ -282,12 +276,10 @@ module.exports = {
             await guild.members.fetch().catch(() => { });
             const role = ev.roleId ? guild.roles.cache.get(ev.roleId) : null;
 
-            // Sunucuda olmayanları listeden düşür
             ev.kadro = ev.kadro.filter(id => guild.members.cache.has(id));
             ev.yedek = ev.yedek.filter(id => guild.members.cache.has(id));
             setActive(ev);
 
-            // Rol ver + kod DM'i
             for (const id of [...ev.kadro, ...ev.yedek]) {
                 const member = guild.members.cache.get(id);
                 if (!member) continue;
@@ -298,7 +290,6 @@ module.exports = {
 
             await updateEmbed(client, ev);
 
-            // Gece 12 zamanlayıcısı (resume sonrası da buradan kurulur)
             const remaining = ev.endAt - Date.now();
             if (remaining > 0) {
                 setTimeout(() => module.exports.endEvent(client), remaining);
@@ -317,9 +308,6 @@ module.exports = {
         await module.exports.destroyEvent(client, null);
     },
 
-    /**
-     * Mesajı siler, seçilen roldeki TÜM kişilerden rolü geri çeker, veriyi temizler.
-     */
     async destroyEvent(client, customNote) {
         const ev = getActive();
         if (!ev) return;
@@ -327,7 +315,6 @@ module.exports = {
         try {
             const guild = client.guilds.cache.get(ev.guildId);
 
-            // 1) Rolü OLAN herkesten rolü geri çek (sadece katılımcı listesi değil — roldaki herkes)
             if (ev.roleId && guild) {
                 await guild.members.fetch().catch(() => { });
                 const role = guild.roles.cache.get(ev.roleId);
@@ -340,7 +327,6 @@ module.exports = {
                 }
             }
 
-            // 2) Mesajı sil (kendini imha)
             if (guild) {
                 const channel = await client.channels.fetch(ev.channelId).catch(() => null);
                 if (channel && channel.isTextBased()) {
@@ -349,16 +335,14 @@ module.exports = {
                 }
             }
 
-            // 3) Veriyi temizle
             clearActive();
             console.log(`[ETKİNİLİK] Etkinlik kendini imha etti.${customNote ? ' (' + customNote + ')' : ''}`);
         } catch (e) {
             console.error('[ETKİNİLİK] Kendini imha hatası:', e);
-            clearActive(); // hata olsa bile veriyi bırakma
+            clearActive();
         }
     },
 
-    /* ---------------- Bot yeniden başlayınca devam ettir ---------------- */
     async resume(client) {
         try {
             const ev = getActive();
@@ -374,13 +358,11 @@ module.exports = {
                 if (ev.startAt > now) {
                     setTimeout(() => module.exports.startEvent(client), ev.startAt - now);
                 } else {
-                    // Başlangıç zamanı bot kapalıyken geçti -> hemen başlat
                     module.exports.startEvent(client);
                     return;
                 }
             }
 
-            // Gece 12 zamanlayıcısı
             if (ev.endAt > now) {
                 setTimeout(() => module.exports.endEvent(client), ev.endAt - now);
                 console.log(`[INFO] Etkinlik devam ettirildi (bitiş: gece 12, ${Math.round((ev.endAt - now) / 60000)} dk sonra).`);
@@ -393,23 +375,6 @@ module.exports = {
     },
 };
 
-/* ---------------- Kod DM'i ---------------- */
-async function sendCodeDM(member, ev) {
-    if (!member?.user) return;
-    const embed = new EmbedBuilder()
-        .setColor('#2b6cb0')
-        .setTitle('✅ ETKİNLİK BİLGİLERİ')
-        .setDescription(
-            `🔥 **${BRAND}** Etkinlik rolü verildi!\n` +
-            `🎯 **BAŞLANGIÇ:** <t:${Math.floor(ev.startAt / 1000)}:F>\n` +
-            `🌙 **BİTİŞ:** GECE 12 — <t:${Math.floor(ev.endAt / 1000)}:R>\n` +
-            `🔑 **ETKİNLİK KODU:** \`${ev.code}\`\n\n` +
-            `🚨 **GECE 12'DE ROL GERİ ALINACAKTIR.**`
-        )
-        .setFooter({ text: BRAND });
-    return member.user.send({ embeds: [embed] }).catch(() => { });
-}
-
 /* ---------------- Sunucudan ayrılan katılımcıyı düşür ---------------- */
 module.exports.handleMemberLeave = async function (member) {
     try {
@@ -420,11 +385,9 @@ module.exports.handleMemberLeave = async function (member) {
         const wasInYedek = ev.yedek.includes(member.id);
         if (!wasInKadro && !wasInYedek) return;
 
-        // Listeden düşür
         ev.kadro = ev.kadro.filter(id => id !== member.id);
         ev.yedek = ev.yedek.filter(id => id !== member.id);
 
-        // Boşluk açıldıysa yedekten kadroya yükselt
         if (ev.kadro.length < ev.kadroMax && ev.yedek.length > 0) {
             const promoted = ev.yedek.shift();
             ev.kadro.push(promoted);
@@ -444,12 +407,13 @@ async function updateEmbed(client, ev, extraLine = null) {
         const message = await channel.messages.fetch(ev.messageId).catch(() => null);
         if (!message) return;
 
-        const { embed, file } = buildEmbed(ev);
+        const guild = message.guild;
+        const { embed, file } = buildEmbed(ev, guild);
         if (extraLine) {
             embed.setDescription(`${embed.data.description ?? ''}\n\n${extraLine}`);
         }
 
-        const payload = { embeds: [embed], components: [buildButtons()] };
+        const payload = { embeds: [embed], components: ev.status === 'beklemede' ? [buildButtons()] : [] };
         if (file) payload.attachments = [new AttachmentBuilder(file, { name: 'logo.png' })];
 
         await message.edit(payload).catch(() => { });
