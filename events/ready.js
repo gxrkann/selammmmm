@@ -1,5 +1,4 @@
-const { Events, ChannelType } = require('discord.js');
-const { joinVoiceChannel } = require('@discordjs/voice');
+const { Events } = require('discord.js');
 const config = require('../config.json');
 const aktiflikCommand = require('../commands/aktiflik');
 
@@ -30,47 +29,26 @@ module.exports = {
             console.error('Etkinlik devam ettirilemedi:', error);
         });
 
-        // Ses kanalına bağlan (ID'ler doluysa)
-        if (config.guildId && config.voiceChannelId) {
-            try {
-                const guild = client.guilds.cache.get(config.guildId);
+        // Ses kanalı: aktifse bağlan + kopunca otomatik yeniden bağlan
+        try {
+            const voice = require('../utils/voice');
+            const saved = voice.loadVoiceData();
+            const sesKanalId = saved.active && saved.channelId ? saved.channelId : config.voiceChannelId;
+
+            if (config.guildId && sesKanalId) {
+                const guild = client.guilds.cache.get(config.guildId) || client.guilds.cache.first();
                 if (!guild) {
                     console.error('❌ Guild bulunamadı! config.json > guildId');
-                    return;
+                } else {
+                    voice.setVoiceActive(sesKanalId, guild.id);
+                    voice.resumeVoice(guild);
+                    console.log(`🔊 Ses kanalına otomatik bağlanılıyor: ${sesKanalId}`);
                 }
-
-                const voiceChannel = guild.channels.cache.get(config.voiceChannelId);
-                if (!voiceChannel) {
-                    console.error('❌ Ses kanalı bulunamadı! config.json > voiceChannelId');
-                    return;
-                }
-
-                if (voiceChannel.type !== ChannelType.GuildVoice) {
-                    console.error('❌ Belirtilen kanal bir ses kanalı değil!');
-                    return;
-                }
-
-                const connection = joinVoiceChannel({
-                    channelId: voiceChannel.id,
-                    guildId: guild.id,
-                    adapterCreator: guild.voiceAdapterCreator,
-                });
-
-                console.log(`✅ Ses kanalına bağlanıldı: ${voiceChannel.name} (${voiceChannel.id})`);
-
-                connection.on('error', error => {
-                    console.error('❌ Ses kanalı bağlantı hatası:', error);
-                });
-
-                connection.on('stateChange', (oldState, newState) => {
-                    console.log(`🔄 Ses bağlantı durumu: ${oldState.status} -> ${newState.status}`);
-                });
-
-            } catch (error) {
-                console.error('❌ Ses kanalına bağlanırken hata:', error);
+            } else {
+                console.log('[BİLGİ] guildId/voiceChannelId boş olduğu için ses kanalına bağlanılmadı.');
             }
-        } else {
-            console.log('[BİLGİ] guildId/voiceChannelId boş olduğu için ses kanalına bağlanılmadı.');
+        } catch (error) {
+            console.error('❌ Ses kanalına bağlanırken hata:', error);
         }
     },
 };
