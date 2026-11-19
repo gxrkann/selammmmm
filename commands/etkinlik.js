@@ -52,7 +52,7 @@ function buildEmbed(ev) {
 
     const desc =
         `<@&${ev.roleId}> etkinlik rolü verildi. Ayrılınca veya **gece 12'de** geri alınır.` +
-        (started ? `\n\n✅ **ETKİNLİK BAŞLADI — Etkinlik kodu DM ile gönderildi.**` : '');
+        (started ? `\n\n✅ **ETKİNLİK BAŞLADI — Rol verildi.**` : '');
 
     const kadroList = ev.kadro.map((id, i) => `${i + 1}. <@${id}>`).join('\n') || '_Henüz katılım yok_';
     const yedekList = ev.yedek.length ? ev.yedek.map((id, i) => `${i + 1}. <@${id}>`).join('\n') : '_Yedek yok_';
@@ -193,17 +193,16 @@ module.exports = {
                 return interaction.reply({ content: '❌ Kadro ve yedek dolu!', ephemeral: true });
             }
 
-            // Etkinlik başladıysa permi hemen ver + kodu DM ile gönder
+            // Etkinlik başladıysa permi hemen ver
             if (started) {
                 const member = await interaction.guild.members.fetch(userId).catch(() => null);
                 if (member && ev.roleId && !member.roles.cache.has(ev.roleId)) {
                     await member.roles.add(ev.roleId, 'Etkinlik katılımı').catch(() => { });
                 }
-                await sendCodeDM(member || { user: interaction.user }, ev).catch(() => { });
             }
 
             await updateEmbed(interaction.client, ev);
-            return interaction.reply({ content: started ? '✅ Etkinliğe katıldın — rol verildi, kod DM kutunda!' : '✅ Etkinliğe katıldın! Rol başlangıçta verilecek.', ephemeral: true });
+            return interaction.reply({ content: started ? '✅ Etkinliğe katıldın — rol verildi.' : '✅ Etkinliğe katıldın! Rol başlangıçta verilecek.', ephemeral: true });
         }
 
         /* ---- AYRIL ---- */
@@ -224,7 +223,6 @@ module.exports = {
                     const m = await interaction.guild.members.fetch(promoted).catch(() => null);
                     if (m && !m.roles.cache.has(ev.roleId)) {
                         await m.roles.add(ev.roleId, 'Yedekten kadroya yükseltildi').catch(() => { });
-                        await sendCodeDM(m, ev).catch(() => { });
                     }
                 }
             }
@@ -250,7 +248,7 @@ module.exports = {
                     `✅ **${interaction.member}** — \`${ev.roleId ? 'ROL' : ''}\` ${started ? 'VERİLDİ' : 'BAŞLANGIÇTA VERİLECEK'}\n` +
                     `🎯 **BAŞLANGIÇ:** <t:${Math.floor(ev.startAt / 1000)}:F> (<t:${Math.floor(ev.startAt / 1000)}:R>)\n` +
                     `🌙 **BİTİŞ:** GECE 12 — <t:${Math.floor(ev.endAt / 1000)}:R>\n` +
-                    `🔑 **ETKİNLİK KODU:** ${started ? `\`${ev.code}\`` : '`BAŞLANGIÇTA DM İLE GÖNDERİLİR`'}\n\n` +
+                    `🔑 **ETKİNLİK KODU:** ${started ? `\`${ev.code}\`` : '`YOK`'}\n\n` +
                     `🚨 **GECE 12'DE ETKİNLİK MESAJI SİLİNECEK VE ROLÜ OLAN HERKESDEN ROL GERİ ÇEKİLECEK.**`
                 )
                 .setFooter({ text: BRAND })
@@ -296,7 +294,6 @@ module.exports = {
                 if (role && !member.roles.cache.has(role.id)) {
                     await member.roles.add(role, 'Etkinlik katılımı').catch(() => { });
                 }
-                await sendCodeDM(member, ev).catch(() => { });
             }
 
             await updateEmbed(client, ev);
