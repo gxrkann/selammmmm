@@ -32,6 +32,14 @@ function stripName(name) {
 /* ---------------- PLAN (Senin İstediğin) ---------------- */
 const PLAN = [
   {
+    category: "</ TICKET LOG />",
+    color: COLORS.step,
+    channels: [
+      { name: "zrticketlog", emoji: "📩" }
+    ],
+    successText: "Ticket log sistemi başarıyla {AKSİYON}."
+  },
+  {
     category: "</ CEZA LOG />",
     color: COLORS.step,
     channels: [
@@ -62,6 +70,12 @@ const PLAN = [
       { name: "zrvoice-log", emoji: "💻" }
     ],
     successText: "Zr log sistemi başarıyla {AKSİYON}."
+  },
+  {
+    category: "</ ATEN />",
+    color: COLORS.step,
+    channels: [],
+    successText: "Aten kategori sistemi başarıyla {AKSİYON}."
   }
 ];
 

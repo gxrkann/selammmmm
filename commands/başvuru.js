@@ -36,6 +36,19 @@ function getNextTicketNumber() {
     return data.lastTicketNumber;
 }
 
+// Ticket islemlerini zrticketlog kanalina logla
+async function sendTicketLog(guild, embed) {
+    try {
+        const logData = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/log.json'), 'utf8'));
+        const logId = logData['zrticketlog'];
+        if (!logId) return;
+        const ch = guild.channels.cache.get(logId) || await guild.channels.fetch(logId).catch(() => null);
+        if (ch?.isTextBased()) await ch.send({ embeds: [embed] }).catch(() => { });
+    } catch (e) {
+        console.error('Ticket log hatası:', e);
+    }
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('başvuru')
@@ -117,44 +130,24 @@ module.exports = {
             const guild = interaction.guild;
             const user = interaction.user;
 
-            // Kategoriyi bul (config'den veya log.json'dan)
+            // Kategoriyi bul: Ayrica (ATEN) kategorisinde ticketler acar
             let categoryId = config.ticketCategoryId;
 
             if (!categoryId) {
-                // Log.json'dan TİCKET LOG kategorisini bul
-                try {
-                    const logData = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/log.json'), 'utf8'));
-                    const ticketLogCategory = logData['</ TİCKET LOG />'];
-                    if (ticketLogCategory) {
-                        // Kategoriyi bul
-                        const category = guild.channels.cache.find(
-                            c => c.type === ChannelType.GuildCategory && c.name.includes('TİCKET')
-                        );
-                        if (category) {
-                            categoryId = category.id;
-                        }
-                    }
-                } catch (error) {
-                    console.error('Log dosyası okunamadı:', error);
+                // Ayrica (ATEN) kategorisini ara
+                const atenCategory = guild.channels.cache.find(
+                    c => c.type === ChannelType.GuildCategory && (c.name.includes('ATEN') || c.name.includes('aten'))
+                );
+                if (atenCategory) {
+                    categoryId = atenCategory.id;
                 }
+            }
 
-                // Hala bulunamadıysa genel arama yap
-                if (!categoryId) {
-                    const category = guild.channels.cache.find(
-                        c => c.type === ChannelType.GuildCategory &&
-                            (c.name.includes('TİCKET') || c.name.includes('TICKET') || c.name.includes('Ticket'))
-                    );
-                    if (category) {
-                        categoryId = category.id;
-                    }
-                }
-
-                if (!categoryId) {
-                    return interaction.reply({
-                        content: '❌ Ticket kategori bulunamadı! Lütfen bir ticket kategorisi oluşturun veya config.json\'a ticketCategoryId ekleyin.',
-                        ephemeral: true
-                    });
-                }
+            if (!categoryId) {
+                return interaction.reply({
+                    content: '❌ Ayrica (ATEN) ticket kategorisi bulunamadı! `/setup aç` ile kategoriyi oluşturun.',
+                    ephemeral: true
+                });
             }
 
             // Kullanıcının zaten açık bir başvuru kanalı var mı kontrol et
@@ -273,6 +266,21 @@ module.exports = {
                 components: [closeSelect]
             });
 
+            // Ticket log kanalina bildirim
+            const ticketLogEmbed = new EmbedBuilder()
+                .setColor('#de4a4a')
+                .setTitle('📩 Yeni Ekip Başvuru Ticketı')
+                .setDescription(`${user} adlı kişi bir ekip başvuru ticketı açtı.`)
+                .addFields(
+                    { name: '👤 Kullanıcı', value: `${user} (\`${user.id}\`)`, inline: true },
+                    { name: '🎫 Ticket No', value: `\`${ticketNumber}\``, inline: true },
+                    { name: '📂 Kanal', value: `${ticketChannel}`, inline: true },
+                    { name: '📅 Zaman', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
+                )
+                .setFooter({ text: config.footer.text })
+                .setTimestamp();
+            await sendTicketLog(guild, ticketLogEmbed);
+
             // Ticket kaydını oluştur
             const ticketsData = loadTicketData();
             if (!ticketsData.tickets) ticketsData.tickets = {};
@@ -342,6 +350,18 @@ module.exports = {
                     saveTicketData(ticketsData);
                 }
 
+                const claimLogEmbed = new EmbedBuilder()
+                    .setColor('#1abc9c')
+                    .setTitle('🙋 Ticket Sahiplenildi')
+                    .setDescription(`Ticket \`#${record?.number}\` sahiplenildi.`)
+                    .addFields(
+                        { name: '👤 Yetkili', value: `${interaction.user} (\`${interaction.user.id}\`)`, inline: true },
+                        { name: '🎫 Ticket No', value: record?.number ? `\`${record.number}\`` : 'Bilinmiyor', inline: true }
+                    )
+                    .setFooter({ text: config.footer.text })
+                    .setTimestamp();
+                await sendTicketLog(guild, claimLogEmbed);
+
                 // Kanal adına ✅ ekle (sahiplenildi işareti)
                 if (!channel.name.startsWith('✅')) {
                     await channel.setName(`✅┇${channel.name.replace(/^[^a-zA-Z0-9]+/, '')}`).catch(() => { });
@@ -376,6 +396,18 @@ module.exports = {
                     record.status = 'beklemede';
                     saveTicketData(ticketsData);
                 }
+
+                const holdLogEmbed = new EmbedBuilder()
+                    .setColor('#f1c40f')
+                    .setTitle('⏳ Ticket Beklemeye Alındı')
+                    .setDescription(`Ticket \`#${record?.number}\` beklemeye alındı.`)
+                    .addFields(
+                        { name: '👮 Alan Yetkili', value: `${interaction.user} (\`${interaction.user.id}\`)`, inline: true },
+                        { name: '🎫 Ticket No', value: record?.number ? `\`${record.number}\`` : 'Bilinmiyor', inline: true }
+                    )
+                    .setFooter({ text: config.footer.text })
+                    .setTimestamp();
+                await sendTicketLog(guild, holdLogEmbed);
 
                 // Kanal adına ⏳ ekle
                 if (!channel.name.startsWith('⏳')) {
@@ -419,6 +451,18 @@ module.exports = {
                     delete ticketsData.tickets[channel.id];
                     saveTicketData(ticketsData);
                 }
+
+                const closeLogEmbed = new EmbedBuilder()
+                    .setColor('#e74c3c')
+                    .setTitle('🔒 Ticket Kapatıldı')
+                    .setDescription(`Ticket \`#${record?.number}\` kapatıldı ve silinecek.`)
+                    .addFields(
+                        { name: '👤 Kapantıran', value: `${interaction.user} (\`${interaction.user.id}\`)`, inline: true },
+                        { name: '🎫 Ticket No', value: record?.number ? `\`${record.number}\`` : 'Bilinmiyor', inline: true }
+                    )
+                    .setFooter({ text: config.footer.text })
+                    .setTimestamp();
+                await sendTicketLog(guild, closeLogEmbed);
 
                 // Kısa bir gecikme sonrası kanalı sil
                 setTimeout(async () => {
