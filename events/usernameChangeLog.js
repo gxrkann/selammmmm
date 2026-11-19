@@ -21,7 +21,7 @@ module.exports = {
       }
 
       // Log kanalını al
-      const logChId = log['lrmember-log'];
+      const logChId = log['zrmember-log'];
       if (!logChId) return;
 
       const logCh = newMember.guild.channels.cache.get(logChId) || await newMember.guild.channels.fetch(logChId).catch(() => null);

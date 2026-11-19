@@ -70,7 +70,7 @@ async function logCommandUsage(interaction) {
         const logData = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/log.json'), 'utf8'));
 
         // luneriscommand-log kanal ID'sini al
-        const commandLogChannelId = logData['lrcommand-log'];
+        const commandLogChannelId = logData['zrcommand-log'];
 
         if (!commandLogChannelId) {
             console.log('luneriscommand-log kanalı bulunamadı');

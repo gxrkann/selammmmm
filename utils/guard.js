@@ -58,7 +58,7 @@ async function checkGuard(executor, guild) {
         const logDataPath = path.join(__dirname, '../data/log.json');
         if (fs.existsSync(logDataPath)) {
             const logData = JSON.parse(fs.readFileSync(logDataPath, 'utf8'));
-            const guardLogId = logData['lrguard-log'];
+            const guardLogId = logData['zrguard-log'];
             if (guardLogId) {
                 const guardChannel = guild.channels.cache.get(guardLogId) || await guild.channels.fetch(guardLogId).catch(() => null);
                 if (guardChannel) {

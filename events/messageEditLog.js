@@ -21,7 +21,7 @@ module.exports = {
       if (newMessage?.partial) { try { await newMessage.fetch(); } catch { } }
 
       // LOG kanalı ID (luneris anahtarını kullan)
-      const logChId = log['lrmember-log'];
+      const logChId = log['zrmember-log'];
       if (!logChId) return;
 
       const logCh =

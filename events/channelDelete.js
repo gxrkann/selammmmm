@@ -10,7 +10,7 @@ module.exports = {
             if (!channel.guild) return; // Only process inside a guild
 
             const logData = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/log.json'), 'utf8'));
-            const channelLogId = logData['lrchannel-log'];
+            const channelLogId = logData['zrchannel-log'];
             if (!channelLogId) return;
 
             const guild = channel.guild;

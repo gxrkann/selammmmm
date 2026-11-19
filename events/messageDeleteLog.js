@@ -18,7 +18,7 @@ module.exports = {
       // Partials için
       if (message?.partial) { try { await message.fetch(); } catch { } }
 
-      const logChId = log['lrmember-log'];
+      const logChId = log['zrmember-log'];
       if (!logChId) return;
 
       const logCh =

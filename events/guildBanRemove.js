@@ -8,7 +8,7 @@ module.exports = {
     async execute(ban) {
         try {
             const logData = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/log.json'), 'utf8'));
-            const cezaLogId = logData['lrceza-log'];
+            const cezaLogId = logData['zrceza-log'];
             if (!cezaLogId) return;
 
             const guild = ban.guild;

@@ -291,7 +291,7 @@ module.exports = {
 
       // log.json'dan lunerissecurity-log kanal ID'sini al
       const logData = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/log.json'), 'utf8'));
-      const secLogId = logData['lrmember-log'];
+      const secLogId = logData['zrmember-log'];
       if (!secLogId) return;
 
       const logCh =
@@ -302,7 +302,7 @@ module.exports = {
 
       await logCh.send({ files: [secAttachment], content: buildSecurityMessage(member) });
 
-      const joinLogId = logData['lrgiris-log'];
+      const joinLogId = logData['zrgiris-log'];
       if (joinLogId) {
         const joinCh =
           member.guild.channels.cache.get(joinLogId) ||

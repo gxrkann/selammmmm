@@ -8,7 +8,7 @@ module.exports = {
     async execute(role) {
         try {
             const logData = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/log.json'), 'utf8'));
-            const roleLogId = logData['lrrole-log'];
+            const roleLogId = logData['zrrole-log'];
             if (!roleLogId) return;
 
             const guild = role.guild;

@@ -40,7 +40,7 @@ module.exports = {
 
       // log.json'dan luneriscikis-log kanal ID'sini al
       const logData = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/log.json'), 'utf8'));
-      const exitLogChannelId = logData['lrcikis-log'];
+      const exitLogChannelId = logData['zrcikis-log'];
 
       if (!exitLogChannelId) {
         console.log('luneriscikis-log kanalı bulunamadı');
@@ -118,7 +118,7 @@ module.exports = {
         const kicker = kickLog.executor;
         const reason = kickLog.reason || 'Belirtilmedi';
 
-        const cezaLogId = logData['lrceza-log'];
+        const cezaLogId = logData['zrceza-log'];
         const cezaChannel = guild.channels.cache.get(cezaLogId) || await guild.channels.fetch(cezaLogId).catch(() => null);
 
         if (cezaChannel) {

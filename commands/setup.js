@@ -35,8 +35,8 @@ const PLAN = [
     category: "</ CEZA LOG />",
     color: COLORS.step,
     channels: [
-      { name: "lrceza-log", emoji: "❗️" },
-      { name: "lrwarn-log", emoji: "❗️" }
+      { name: "zrceza-log", emoji: "❗️" },
+      { name: "zrwarn-log", emoji: "❗️" }
     ],
     successText: "Ceza sistemi başarıyla {AKSİYON}."
   },
@@ -44,10 +44,10 @@ const PLAN = [
     category: "</ GUARD LOG />",
     color: COLORS.step,
     channels: [
-      { name: "lrguard-log", emoji: "🌐" },
-      { name: "lrrole-log", emoji: "🌐" },
-      { name: "lrchannel-log", emoji: "🌐" },
-      { name: "lrserver-log", emoji: "🌐" }
+      { name: "zrguard-log", emoji: "🌐" },
+      { name: "zrrole-log", emoji: "🌐" },
+      { name: "zrchannel-log", emoji: "🌐" },
+      { name: "zrserver-log", emoji: "🌐" }
     ],
     successText: "Guard log sistemi {AKSİYON}."
   },
@@ -55,13 +55,13 @@ const PLAN = [
     category: "</ LR LOG />",
     color: COLORS.step,
     channels: [
-      { name: "lrgiris-log", emoji: "💻" },
-      { name: "lrcikis-log", emoji: "💻" },
-      { name: "lrcommand-log", emoji: "💻" },
-      { name: "lrmember-log", emoji: "💻" },
-      { name: "lrvoice-log", emoji: "💻" }
+      { name: "zrgiris-log", emoji: "💻" },
+      { name: "zrcikis-log", emoji: "💻" },
+      { name: "zrcommand-log", emoji: "💻" },
+      { name: "zrmember-log", emoji: "💻" },
+      { name: "zrvoice-log", emoji: "💻" }
     ],
-    successText: "Lr log sistemi başarıyla {AKSİYON}."
+    successText: "Zr log sistemi başarıyla {AKSİYON}."
   }
 ];
 

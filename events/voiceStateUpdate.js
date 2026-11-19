@@ -12,7 +12,7 @@ const BRAND = `${config.footer.text} | Log Sistemi.`;
 function getVoiceLogChannel() {
     try {
         const logData = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/log.json'), 'utf8'));
-        return logData['lrvoice-log'];
+        return logData['zrvoice-log'];
     } catch {
         return null;
     }

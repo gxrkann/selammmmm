@@ -82,7 +82,7 @@ module.exports = {
                 if (fsSync.existsSync(logDataPath)) {
                     const fileContent = await fs.readFile(logDataPath, 'utf8');
                     const logData = JSON.parse(fileContent);
-                    const linkLogId = logData['lrlink-log'];
+                    const linkLogId = logData['zrlink-log'];
                     
                     if (linkLogId) {
                         const linkChannel = message.guild.channels.cache.get(linkLogId) || await message.guild.channels.fetch(linkLogId).catch(() => null);
