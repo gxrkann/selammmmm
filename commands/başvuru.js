@@ -315,11 +315,12 @@ module.exports = {
             if (interaction.customId !== 'ticket_close') return;
 
             const channel = interaction.channel;
+            const guild = interaction.guild;
 
             // Yetkili mi? (sahiplen/beklemeye al/kapat için gerekli)
             const isOwnerUser = config.ownerId.includes(interaction.user.id);
             const isOwnerRole = config.ownerRoleId && interaction.member?.roles?.cache?.has(config.ownerRoleId);
-            const hasManage = interaction.member?.permissions?.has?.(PermissionFlagsBits.ManageGuild);
+            const hasManage = interaction.member?.permissions.has(PermissionFlagsBits.ManageGuild);
             const isStaff = isOwnerUser || isOwnerRole || hasManage;
 
             const action = interaction.values[0];
