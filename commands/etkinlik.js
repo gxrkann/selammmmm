@@ -99,6 +99,9 @@ function buildButtons() {
 }
 
 async function sendEventMessage(kanal, ev) {
+    // Üyeleri cache'e yükle — alfabetik sıralama için gerekli
+    await kanal.guild.members.fetch().catch(() => {});
+    
     const { embed, file } = buildEmbed(ev, kanal.guild);
     const payload = { embeds: [embed], components: [buildButtons()], fetchReply: true };
     if (file) payload.files = [new AttachmentBuilder(file, { name: 'logo.png' })];
@@ -417,6 +420,9 @@ async function updateEmbed(client, ev, extraLine = null) {
         if (!message) return;
 
         const guild = message.guild;
+        // Üyeleri cache'e yükle — alfabetik sıralama için gerekli
+        await guild.members.fetch().catch(() => {});
+        
         const { embed, file } = buildEmbed(ev, guild);
         if (extraLine) {
             embed.setDescription(`${embed.data.description ?? ''}\n\n${extraLine}`);
