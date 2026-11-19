@@ -7,7 +7,6 @@ const {
   ButtonStyle
 } = require('discord.js');
 
-const canvafy = require('canvafy');
 const { createCanvas, loadImage, CanvasRenderingContext2D } = require('canvas');
 const fs = require('fs');
 const path = require('path');
@@ -95,21 +94,6 @@ function buildSecurityMessage(member) {
   🔹 **Hesap durumu:** (${statIcon}) ${statText}
   🔹 **Giriş yaptığı cihaz:** \`(${dev.icon}) ${dev.text}\``
   );
-}
-
-/* --------------- Canvafy welcome --------------- */
-async function makeWelcomeCard(member) {
-  const avatarURL = member.user.displayAvatarURL({ forceStatic: true, extension: 'png', size: 256 });
-  const buffer = await new canvafy.WelcomeLeave()
-    .setAvatar(avatarURL)
-    .setBackground('color', '#23272a')
-    .setTitle('Hoşgeldin!', '#ffffff')
-    .setDescription('Sunucumuza hoşgeldin, kuralları okumayı unutma!', '#cfd7dd')
-    .setBorder('#9ad7e9')
-    .setAvatarBorder('#E4B44B')
-    .setOverlayOpacity(0.3)
-    .build();
-  return buffer;
 }
 
 /* --------------- Güvenlik kartı --------------- */
@@ -230,31 +214,35 @@ module.exports = {
       const createdAt = member.user.createdAt;
       const isTrusted = (Date.now() - createdAt.getTime()) >= THREE_MONTHS_MS;
 
-      const buffer = await makeWelcomeCard(member);
-      const attachment = new AttachmentBuilder(buffer, { name: 'welcome.png' });
-
       const statusText = isTrusted ? 'Güvenli ✓' : 'İnceleme Gerekli ⚠️';
+      const displayName = member.user.globalName || member.user.username;
+      const acilisTarihi = createdAt.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
       const embed = new EmbedBuilder()
-        .setTitle(`${cfg.serverName}`)
-        .setURL(cfg.joinUrl)
         .setAuthor({
-          name: `${member.guild.name} Hoş Geldinn!`,
+          name: `${member.guild.name} - Hoş geldiniz !!`,
           iconURL: member.guild.iconURL({ size: 256 }) || undefined
         })
-        .setDescription(
-          `🔹 · \`Kullanıcı:\` ${member} - \`${member.id}\`\n` +
-          `🔹 · \`Kullanıcı ID:\` ${member.id}\n` +
-          `🔹 · \`Hesap oluşturma tarihi:\` <t:${Math.floor(member.user.createdTimestamp / 1000)}:f>\n` +
-          `🔹 · \`Sunucuya giriş sırası:\` ${member.guild.memberCount}\n` +
-          `🔹 · \`Hesap güvenliği:\` ${statusText}\n\n` +
-          `🔹 · Merhabalar, sunucumuza hoşgeldin! Katıldığın için üzerine **Kayıtsız Üye** rolünü verdim.`
+        .setDescription('⚠️ Merhabalar, Sunucuya Hoşgeldin. İyi Eğlenceler Diler..')
+        .addFields(
+          { name: '🔹 Kullanıcı:', value: `${member} - _${displayName}_` },
+          { name: '🔹 Discord ID:', value: `${member.id}` },
+          { name: '🔹 Hesap Açılış Tarihi:', value: `${acilisTarihi}` },
+          { name: '🔹 Hesap Güvenliği:', value: statusText }
         )
-        .setColor("#92c8dd")
-        .setImage('attachment://welcome.png')
+        .setColor('#2b2d31')
         .setThumbnail(member.guild.iconURL({ size: 256 }))
         .setFooter({ text: cfg.footer.text, iconURL: member.guild.iconURL({ size: 256 }) });
 
-      await member.user.send({ embeds: [embed], files: [attachment] });
+      // SHYZAM banner'ı mesajın görseli olsun
+      const logoPath = path.join(__dirname, '../Sanzy_logosu_ve_ylan_detaylar.png');
+      const payload = { embeds: [embed] };
+      if (fs.existsSync(logoPath)) {
+        embed.setImage('attachment://shyzam.png');
+        payload.files = [new AttachmentBuilder(logoPath, { name: 'shyzam.png' })];
+      }
+
+      await member.user.send(payload);
 
       const avatarURL = member.user.displayAvatarURL({ forceStatic: true, extension: 'png', size: 256 });
       const dateTR = createdAt.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
