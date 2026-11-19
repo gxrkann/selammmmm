@@ -188,6 +188,8 @@ module.exports = {
             if (ev.kadro.includes(userId) || ev.yedek.includes(userId)) {
                 return interaction.reply({ content: '⚠️ Zaten katıldın!', ephemeral: true });
             }
+            // Önce hemen cevap ver (3 sn limiti), embed güncellemesi sonra çalışsın
+            await interaction.deferReply({ ephemeral: true });
             const started = ev.status !== 'beklemede';
 
             if (ev.kadro.length < ev.kadroMax) {
@@ -197,9 +199,9 @@ module.exports = {
                 ev.yedek.push(userId);
                 setActive(ev);
                 await updateEmbed(interaction.client, ev);
-                return interaction.reply({ content: '✅ Kadro dolu — **YEDEK** olarak kaydoldun!', ephemeral: true });
+                return interaction.editReply('✅ Kadro dolu — **YEDEK** olarak kaydoldun!');
             } else {
-                return interaction.reply({ content: '❌ Kadro ve yedek dolu!', ephemeral: true });
+                return interaction.editReply('❌ Kadro ve yedek dolu!');
             }
 
             if (started) {
@@ -210,7 +212,7 @@ module.exports = {
             }
 
             await updateEmbed(interaction.client, ev);
-            return interaction.reply({ content: started ? '✅ Etkinliğe katıldın — rol verildi.' : '✅ Etkinliğe katıldın! Rol başlangıçta verilecek.', ephemeral: true });
+            return interaction.editReply(started ? '✅ Etkinliğe katıldın — rol verildi.' : '✅ Etkinliğe katıldın! Rol başlangıçta verilecek.');
         }
 
         /* ---- AYRIL ---- */
@@ -219,6 +221,7 @@ module.exports = {
             if (!wasIn) {
                 return interaction.reply({ content: '⚠️ Zaten etkinlikte değilsin!', ephemeral: true });
             }
+            await interaction.deferReply({ ephemeral: true });
 
             ev.kadro = ev.kadro.filter(id => id !== userId);
             ev.yedek = ev.yedek.filter(id => id !== userId);
@@ -241,7 +244,7 @@ module.exports = {
 
             setActive(ev);
             await updateEmbed(interaction.client, ev);
-            return interaction.reply({ content: '👋 Etkinlikten ayrıldın.', ephemeral: true });
+            return interaction.editReply('👋 Etkinlikten ayrıldın.');
         }
 
         /* ---- BİLGİ ---- */
@@ -421,18 +424,20 @@ async function updateEmbed(client, ev, extraLine = null) {
 
         const guild = message.guild;
         // Üyeleri cache'e yükle — alfabetik sıralama için gerekli
-        await guild.members.fetch().catch(() => {});
-        
+        await guild.members.fetch().catch(() => { });
+
         const { embed, file } = buildEmbed(ev, guild);
         if (extraLine) {
             embed.setDescription(`${embed.data.description ?? ''}\n\n${extraLine}`);
         }
 
-        const payload = { embeds: [embed], components: ev.status === 'beklemede' ? [buildButtons()] : [] };
-        if (file) payload.attachments = [new AttachmentBuilder(file, { name: 'logo.png' })];
+        // ÖNEMLİ: `attachments` DEĞİL `files` kullanılmalı!
+        // AttachmentBuilder attachments alanına verilirse API 400 döner ve edit sessizce düşer.
+        const payload = { embeds: [embed], components: [buildButtons()] };
+        if (file) payload.files = [new AttachmentBuilder(file, { name: 'logo.png' })];
 
-        await message.edit(payload).catch(() => { });
+        await message.edit(payload);
     } catch (e) {
-        console.error('[ETKİNİLİK] Embed güncelleme hatası:', e);
+        console.error('[ETKİNİLİK] Embed güncelleme hatası:', e.message);
     }
 }
