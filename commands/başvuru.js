@@ -135,7 +135,7 @@ module.exports = {
 
             if (!categoryId) {
                 // Ayrica (ATEN) kategorisini ara
-                const atenCategory = guild.channels.cache.find(
+                const atenCategory = [...guild.channels.cache.values()].find(
                     c => c.type === ChannelType.GuildCategory && (c.name.includes('ATEN') || c.name.includes('aten'))
                 );
                 if (atenCategory) {
@@ -151,7 +151,7 @@ module.exports = {
             }
 
             // Kullanıcının zaten açık bir başvuru kanalı var mı kontrol et
-            const existingTicket = guild.channels.cache.find(
+            const existingTicket = [...guild.channels.cache.values()].find(
                 c => c.parentId === categoryId &&
                     c.type === ChannelType.GuildText &&
                     c.permissionOverwrites.cache.has(user.id)
@@ -195,8 +195,8 @@ module.exports = {
             });
 
             // Kullanıcıya ve @ELDER, @Jayfex gibi rollere mention ekle
-            const elderRole = guild.roles.cache.find(r => r.name.toLowerCase() === 'elder' || r.name.toLowerCase().includes('elder'));
-            const jayfexRole = guild.roles.cache.find(r => r.name.toLowerCase() === 'jayfex' || r.name.toLowerCase().includes('jayfex'));
+            const elderRole = [...guild.roles.cache.values()].find(r => r.name.toLowerCase() === 'elder' || r.name.toLowerCase().includes('elder'));
+            const jayfexRole = [...guild.roles.cache.values()].find(r => r.name.toLowerCase() === 'jayfex' || r.name.toLowerCase().includes('jayfex'));
 
             let mentions = '';
             if (elderRole) mentions += `<@&${elderRole.id}>`;
@@ -424,6 +424,14 @@ module.exports = {
                     )
                     .setFooter({ text: config.footer.text })
                     .setTimestamp();
+
+                // Beklemede kategorisine tasin
+                const beklemedeCat = [...guild.channels.cache.values()].find(
+                    c => c.type === ChannelType.GuildCategory && c.name === '</ BEKLEMEDE />'
+                );
+                if (beklemedeCat) {
+                    await channel.setParent(beklemedeCat.id).catch(() => { });
+                }
 
                 return interaction.reply({ embeds: [holdEmbed] });
             }

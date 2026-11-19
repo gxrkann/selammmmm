@@ -76,6 +76,12 @@ const PLAN = [
     color: COLORS.step,
     channels: [],
     successText: "Aten kategori sistemi başarıyla {AKSİYON}."
+  },
+  {
+    category: "</ BEKLEMEDE />",
+    color: COLORS.warn,
+    channels: [],
+    successText: "Beklemede kategori sistemi başarıyla {AKSİYON}."
   }
 ];
 
