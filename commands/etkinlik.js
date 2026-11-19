@@ -56,37 +56,50 @@ function sortByIdsAlphabetically(ids, guild) {
     });
 }
 
-/* ---------------- Embed ---------------- */
-function buildEmbed(ev, guild) {
-    const started = ev.status !== 'beklemede';
+/* ---------------- Embed — referans tasarıma birebir ---------------- */
+function buildPayload(ev, guild) {
+    const roleMention = ev.roleId ? `<@&${ev.roleId}>` : `@${BRAND}`;
 
     const sortedKadro = sortByIdsAlphabetically(ev.kadro, guild);
     const sortedYedek = sortByIdsAlphabetically(ev.yedek, guild);
 
-    const kadroList = sortedKadro.map((id, i) => `${i + 1}. <@${id}>`).join('\n') || '_Henüz katılım yok_';
-    const yedekList = sortedYedek.length ? sortedYedek.map((id, i) => `${i + 1}. <@${id}>`).join('\n') : '_Yedek yok_';
+    const kadroList = sortedKadro.length
+        ? sortedKadro.map((id, i) => `${i + 1}. <@${id}>`).join('\n')
+        : '_Henüz katılım yok_';
+    const yedekList = sortedYedek.map((id, i) => `${i + 1}. <@${id}>`).join('\n');
 
-    const embed = new EmbedBuilder()
-        .setColor('#2b2d31')
-        .setTitle(`@${BRAND}-YOKLAMA`)
-        .setDescription('Kadrola (silme) VERİLDİR. AYRILINCA VE SÜRE BİTİNCE ALINIR.')
-        .addFields(
-            { name: '🔴 KADRO:', value: `\`${ev.kadro.length}/${ev.kadroMax}\``, inline: true },
-            { name: '🟡 YEDEK:', value: `\`${ev.yedek.length}/${ev.yedekMax}\``, inline: true },
-            { name: '🔹 BİTİŞ:', value: `🌙 GECE 12\n<t:${Math.floor(ev.endAt / 1000)}:R>`, inline: true },
-            { name: '🔹 TOPLANMA:', value: `<t:${Math.floor(ev.toplasmaAt / 1000)}:t>`, inline: true },
-            { name: `KADRO (${ev.kadro.length})`, value: kadroList.slice(0, 1024) },
-            { name: `YEDEK (${ev.yedek.length})`, value: yedekList.slice(0, 1024) },
-        )
-        .setFooter({ text: `KATILINCA (@${BRAND} Kadro (silme) VERİLİR. AYRILINCA VE SÜRE BİTİNCE ALINIR.)` })
-        .setTimestamp();
+    const sureSaat = Math.max(1, Math.round((ev.endAt - ev.startAt) / 3_600_000));
+    const endSec = Math.floor(ev.endAt / 1000);
+
+    // 1. embed — başlık + açıklama + 5 satır bilgi + footer + logo
+    const desc1 = [
+        `${roleMention} Kadro (silme)`,
+        '',
+        `1 • 🔴 **KADRO:** ${ev.kadro.length}/${ev.kadroMax}`,
+        `2 • 🔵 **YEDEK:** ${ev.yedek.length}/${ev.yedekMax}`,
+        `3 • 🌙 **BİTİŞ:** <t:${endSec}:F> · <t:${endSec}:R>`,
+        `4 • ☀️ **SÜRE:** ${sureSaat} SAAT`,
+        `5 • 🔊 **TOPLANMA:** <t:${Math.floor(ev.toplasmaAt / 1000)}:t>`,
+    ].join('\n');
+
+    const embed1 = new EmbedBuilder()
+        .setColor('#5865F2')
+        .setTitle(`🔊 @${BRAND}-YOKLAMA`)
+        .setDescription(desc1)
+        .setImage('attachment://logo.png')
+        .setThumbnail('attachment://logo.png')
+        .setFooter({ text: `Katılınca @${BRAND} Kadro (silme) VERİLİR. AYRILINCA VE SÜRE BİTİNCE ALINIR.` });
+
+    // 2. embed — KADRO/YEDEK listesi
+    let listDesc = `**KADRO**\n${kadroList}`;
+    if (sortedYedek.length) listDesc += `\n\n**YEDEK**\n${yedekList}`;
+
+    const embed2 = new EmbedBuilder()
+        .setColor('#5865F2')
+        .setDescription(listDesc.slice(0, 4096));
 
     const logoPath = path.join(__dirname, '../Sanzy_logosu_ve_ylan_detaylar.png');
-    if (fs.existsSync(logoPath)) {
-        embed.setImage('attachment://logo.png');
-        return { embed, file: logoPath };
-    }
-    return { embed, file: null };
+    return { embeds: [embed1, embed2], file: fs.existsSync(logoPath) ? logoPath : null };
 }
 
 function buildButtons() {
@@ -101,9 +114,9 @@ function buildButtons() {
 async function sendEventMessage(kanal, ev) {
     // Üyeleri cache'e yükle — alfabetik sıralama için gerekli
     await kanal.guild.members.fetch().catch(() => {});
-    
-    const { embed, file } = buildEmbed(ev, kanal.guild);
-    const payload = { embeds: [embed], components: [buildButtons()], fetchReply: true };
+
+    const { embeds, file } = buildPayload(ev, kanal.guild);
+    const payload = { embeds, components: [buildButtons()], fetchReply: true };
     if (file) payload.files = [new AttachmentBuilder(file, { name: 'logo.png' })];
     return kanal.send(payload);
 }
@@ -426,14 +439,16 @@ async function updateEmbed(client, ev, extraLine = null) {
         // Üyeleri cache'e yükle — alfabetik sıralama için gerekli
         await guild.members.fetch().catch(() => { });
 
-        const { embed, file } = buildEmbed(ev, guild);
+        const { embeds, file } = buildPayload(ev, guild);
         if (extraLine) {
-            embed.setDescription(`${embed.data.description ?? ''}\n\n${extraLine}`);
+            // Not, liste embed'inin (2.) altına eklenir
+            const last = embeds[embeds.length - 1];
+            last.setDescription(`${last.data.description ?? ''}\n\n${extraLine}`.slice(0, 4096));
         }
 
         // ÖNEMLİ: `attachments` DEĞİL `files` kullanılmalı!
         // AttachmentBuilder attachments alanına verilirse API 400 döner ve edit sessizce düşer.
-        const payload = { embeds: [embed], components: [buildButtons()] };
+        const payload = { embeds, components: [buildButtons()] };
         if (file) payload.files = [new AttachmentBuilder(file, { name: 'logo.png' })];
 
         await message.edit(payload);
