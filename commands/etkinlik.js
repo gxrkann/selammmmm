@@ -45,6 +45,22 @@ function nextMidnight() {
     return d.getTime();
 }
 
+/* ---------------- HH:MM saati çözücü ---------------- */
+// "20:50" veya "20.50" → { h, min } — geçersizse null
+function parseTime(str) {
+    const m = String(str).trim().match(/^([01]?\d|2[0-3])[:.]([0-5]\d)$/);
+    if (!m) return null;
+    return { h: Number(m[1]), min: Number(m[2]) };
+}
+
+// { h, min } → bugünün tarihiyle timestamp; saat geçmişse yarına kaydırır
+function atHourToday(t) {
+    const d = new Date();
+    d.setHours(t.h, t.min, 0, 0);
+    if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+    return d.getTime();
+}
+
 /* ---------------- Alfabetik sıralama ---------------- */
 function sortByIdsAlphabetically(ids, guild) {
     return [...ids].sort((a, b) => {
@@ -125,10 +141,12 @@ async function sendEventMessage(kanal, ev) {
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('ingame')
-        .setDescription('In-game yoklama oluşturur (gece 12\'ye kadar sürer, sonra kendini imha eder)')
+        .setDescription('In-game yoklama oluşturur (bitişte kendini imha eder, saatler HH:MM ile ayarlanır)')
         .addIntegerOption(o => o.setName('kadro').setDescription('Kadro kapasitesi (ana kadro)').setRequired(true).setMinValue(1).setMaxValue(50))
         .addIntegerOption(o => o.setName('yedek').setDescription('Yedek kapasitesi').setRequired(true).setMinValue(0).setMaxValue(20))
         .addIntegerOption(o => o.setName('baslangic').setDescription('Kaç dakika sonra başlasın? (boş: hemen başlar)').setMinValue(1).setMaxValue(720))
+        .addStringOption(o => o.setName('toplanma').setDescription('Toplanma saati, HH:MM (örn: 20:50 — boş: başlangıç anı)').setMaxLength(5))
+        .addStringOption(o => o.setName('bitis').setDescription('Bitiş saati, HH:MM (örn: 22:30 — boş: gece 12)').setMaxLength(5))
         .addStringOption(o => o.setName('kod').setDescription('Etkinlik kodu (boş bırakılırsa rastgele üretilir)').setMaxLength(20))
         .addChannelOption(o => o.setName('kanal').setDescription('Mesajın gönderileceği kanal (boş: bu kanal)')),
 
@@ -155,11 +173,42 @@ module.exports = {
         const kod = interaction.options.getString('kod') || Math.random().toString(36).slice(2, 8).toUpperCase();
         const kanal = interaction.options.getChannel('kanal') ?? interaction.channel;
 
+        // Opsiyonel saatler: toplanma & bitiş (HH:MM)
+        const toplanmaStr = interaction.options.getString('toplanma');
+        const bitisStr = interaction.options.getString('bitis');
+
+        let toplanmaAt = null;
+        if (toplanmaStr) {
+            const t = parseTime(toplanmaStr);
+            if (!t) return interaction.editReply('❌ Geçersiz toplanma saati! Format: `20:50` (HH:MM) yazın.');
+            toplanmaAt = atHourToday(t);
+        }
+
+        let endAt = null;
+        if (bitisStr) {
+            const t = parseTime(bitisStr);
+            if (!t) return interaction.editReply('❌ Geçersiz bitiş saati! Format: `22:30` (HH:MM) yazın.');
+            endAt = atHourToday(t);
+        }
+
         if (!kanal || kanal.type !== ChannelType.GuildText) {
             return interaction.editReply('❌ Geçerli bir metin kanalı seçin!');
         }
 
         const now = Date.now();
+        const startAt = now + baslangicDk * 60_000;
+
+        // Bitiş: verilmediyse gece 12; verildiyse başlangıçtan sonra olmalı
+        if (endAt === null) endAt = nextMidnight();
+        if (endAt <= startAt) {
+            return interaction.editReply('❌ Bitiş saati başlangıçtan sonra olmalı! (Örn: `bitis:22:30`)');
+        }
+
+        // Toplanma: verilmediyse başlangıç - 10 dk (min: şimdi)
+        if (toplanmaAt === null) {
+            toplasmaAt = baslangicDk >= 10 ? startAt - 10 * 60_000 : now;
+        }
+
         const ev = {
             messageId: null,
             channelId: kanal.id,
@@ -167,12 +216,12 @@ module.exports = {
             ownerId: interaction.user.id,
             kadroMax, yedekMax,
             kadro: [], yedek: [],
-            startAt: now + baslangicDk * 60_000,
-            endAt: nextMidnight(),
+            startAt,
+            endAt,
             code: kod,
             roleId: config.etkinlikRoleId,
             status: baslangicDk === 0 ? 'basladi' : 'beklemede',
-            toplasmaAt: now + (baslangicDk >= 10 ? (baslangicDk - 10) * 60_000 : now)
+            toplasmaAt
         };
 
         const message = await sendEventMessage(kanal, ev);
@@ -184,7 +233,8 @@ module.exports = {
         }
         setTimeout(() => module.exports.endEvent(interaction.client), Math.max(1000, ev.endAt - now));
 
-        await interaction.editReply(`✅ Etkinlik oluşturuldu: ${kanal} — **Gece 12'de** kendini imha edecek ve rolü geri çekecek.`);
+        const bitisYazi = `<t:${Math.floor(ev.endAt / 1000)}:F>`;
+        await interaction.editReply(`✅ Etkinlik oluşturuldu: ${kanal}\n🌙 **Bitiş / silinme:** ${bitisYazi} — mesaj silinir, tüm roller geri çekilir.`);
     },
 
     /* ---------------- Buton handler ---------------- */
@@ -269,9 +319,9 @@ module.exports = {
                 .setDescription(
                     `✅ **${interaction.member}** — \`${ev.roleId ? 'ROL' : ''}\` ${started ? 'VERİLDİ' : 'BAŞLANGIÇTA VERİLECEK'}\n` +
                     `🎯 **BAŞLANGIÇ:** <t:${Math.floor(ev.startAt / 1000)}:F> (<t:${Math.floor(ev.startAt / 1000)}:R>)\n` +
-                    `🌙 **BİTİŞ:** GECE 12 — <t:${Math.floor(ev.endAt / 1000)}:R>\n` +
+                    `🌙 **BİTİŞ:** <t:${Math.floor(ev.endAt / 1000)}:F> — <t:${Math.floor(ev.endAt / 1000)}:R>\n` +
                     `🔑 **ETKİNLİK KODU:** ${started ? `\`${ev.code}\`` : '`YOK`'}\n\n` +
-                    `🚨 **GECE 12'DE ETKİNLİK MESAJI SİLİNECEK VE ROLÜ OLAN HERKESDEN ROL GERİ ÇEKİLECEK.**`
+                    `🚨 **BİTİŞ SAATİNDE ETKİNLİK MESAJI SİLİNECEK VE ROLÜ OLAN HERKESDEN ROL GERİ ÇEKİLECEK.**`
                 )
                 .setFooter({ text: BRAND })
                 .setTimestamp();
@@ -349,7 +399,7 @@ module.exports = {
                 if (role) {
                     const holders = guild.members.cache.filter(m => m.roles.cache.has(ev.roleId));
                     for (const [, member] of holders) {
-                        await member.roles.remove(ev.roleId, 'Etkinlik sona erdi (gece 12 — kendini imha)').catch(() => { });
+                        await member.roles.remove(ev.roleId, 'Etkinlik sona erdi (bitiş saati — kendini imha)').catch(() => { });
                     }
                     console.log(`[ETKİNİLİK] ${holders.size} kişiden rol geri çekildi.`);
                 }
@@ -393,7 +443,7 @@ module.exports = {
 
             if (ev.endAt > now) {
                 setTimeout(() => module.exports.endEvent(client), ev.endAt - now);
-                console.log(`[INFO] Etkinlik devam ettirildi (bitiş: gece 12, ${Math.round((ev.endAt - now) / 60000)} dk sonra).`);
+                console.log(`[INFO] Etkinlik devam ettirildi (bitiş: ${new Date(ev.endAt).toLocaleString('tr-TR')}, ${Math.round((ev.endAt - now) / 60000)} dk sonra).`);
             } else {
                 module.exports.endEvent(client);
             }
