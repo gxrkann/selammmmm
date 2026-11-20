@@ -75,11 +75,11 @@ function buildPayload(ev, guild) {
     const desc1 = [
         `${roleMention} Kadro (silme)`,
         '',
-        `1 • 🔴 **KADRO:** ${ev.kadro.length}/${ev.kadroMax}`,
-        `2 • 🔵 **YEDEK:** ${ev.yedek.length}/${ev.yedekMax}`,
-        `3 • 🌙 **BİTİŞ:** <t:${endSec}:F> · <t:${endSec}:R>`,
-        `4 • ☀️ **SÜRE:** ${sureSaat} SAAT`,
-        `5 • 🔊 **TOPLANMA:** <t:${Math.floor(ev.toplasmaAt / 1000)}:t>`,
+        `1 • 🔴 **ᴋᴀᴅʀᴏ:** ${ev.kadro.length}/${ev.kadroMax}`,
+        `2 • 🔵 **ʏᴇᴅᴇᴋ:** ${ev.yedek.length}/${ev.yedekMax}`,
+        `3 • 🌙 **ʙɪ̇ᴛɪ̇ş:** <t:${endSec}:F> · <t:${endSec}:R>`,
+        `4 • ☀️ **sᴜ̈ʀᴇ:** ${sureSaat} SAAT`,
+        `5 • 🔊 **ᴛᴏᴘʟᴀɴᴍᴀ:** <t:${Math.floor(ev.toplasmaAt / 1000)}:t>`,
     ].join('\n');
 
     const embed1 = new EmbedBuilder()
