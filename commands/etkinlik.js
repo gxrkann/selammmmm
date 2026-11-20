@@ -89,7 +89,7 @@ function buildPayload(ev, guild) {
 
     // 1. embed — 5 satır bilgi + KADRO/YEDEK listesi (hepsi üstte, logonun üstünde)
     const descLines = [
-        `${roleMention} Kadro (silme)`,
+        roleMention,
         '',
         `1 • 🔴 **ᴋᴀᴅʀᴏ:** ${ev.kadro.length}/${ev.kadroMax}`,
         `2 • 🔵 **ʏᴇᴅᴇᴋ:** ${ev.yedek.length}/${ev.yedekMax}`,
