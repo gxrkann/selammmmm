@@ -87,8 +87,8 @@ function buildPayload(ev, guild) {
     const sureSaat = Math.max(1, Math.round((ev.endAt - ev.startAt) / 3_600_000));
     const endSec = Math.floor(ev.endAt / 1000);
 
-    // 1. embed — başlık + açıklama + 5 satır bilgi + footer + logo
-    const desc1 = [
+    // 1. embed — 5 satır bilgi + KADRO/YEDEK listesi (hepsi üstte, logonun üstünde)
+    const descLines = [
         `${roleMention} Kadro (silme)`,
         '',
         `1 • 🔴 **ᴋᴀᴅʀᴏ:** ${ev.kadro.length}/${ev.kadroMax}`,
@@ -96,26 +96,22 @@ function buildPayload(ev, guild) {
         `3 • 🌙 **ʙɪ̇ᴛɪ̇ş:** <t:${endSec}:F> · <t:${endSec}:R>`,
         `4 • ☀️ **sᴜ̈ʀᴇ:** ${sureSaat} SAAT`,
         `5 • 🔊 **ᴛᴏᴘʟᴀɴᴍᴀ:** <t:${Math.floor(ev.toplasmaAt / 1000)}:t>`,
-    ].join('\n');
+        '',
+        `**KADRO**`,
+        kadroList,
+    ];
+    if (sortedYedek.length) descLines.push('', `**YEDEK**`, yedekList);
 
     const embed1 = new EmbedBuilder()
         .setColor('#5865F2')
         .setTitle(`🔊 @${BRAND}-YOKLAMA`)
-        .setDescription(desc1)
+        .setDescription(descLines.join('\n').slice(0, 4096))
         .setImage('attachment://logo.png')
         .setThumbnail('attachment://logo.png')
         .setFooter({ text: `Katılınca @${BRAND} Kadro (silme) VERİLİR. AYRILINCA VE SÜRE BİTİNCE ALINIR.` });
 
-    // 2. embed — KADRO/YEDEK listesi
-    let listDesc = `**KADRO**\n${kadroList}`;
-    if (sortedYedek.length) listDesc += `\n\n**YEDEK**\n${yedekList}`;
-
-    const embed2 = new EmbedBuilder()
-        .setColor('#5865F2')
-        .setDescription(listDesc.slice(0, 4096));
-
     const logoPath = path.join(__dirname, '../Sanzy_logosu_ve_ylan_detaylar.png');
-    return { embeds: [embed1, embed2], file: fs.existsSync(logoPath) ? logoPath : null };
+    return { embeds: [embed1], file: fs.existsSync(logoPath) ? logoPath : null };
 }
 
 function buildButtons() {
@@ -491,7 +487,7 @@ async function updateEmbed(client, ev, extraLine = null) {
 
         const { embeds, file } = buildPayload(ev, guild);
         if (extraLine) {
-            // Not, liste embed'inin (2.) altına eklenir
+            // Not, ana embed'in açıklamasının (liste dahil) altına eklenir
             const last = embeds[embeds.length - 1];
             last.setDescription(`${last.data.description ?? ''}\n\n${extraLine}`.slice(0, 4096));
         }
