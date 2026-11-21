@@ -10,14 +10,16 @@ module.exports = {
         console.log(`${client.guilds.cache.size} sunucuda aktif`);
         console.log(`${client.users.cache.size} kullanıcıya hizmet veriyor`);
 
-        // Bot durumu
-        client.user.setPresence({
-            status: 'dnd',
-            activities: [{
-                name: `${config.footer.text} | Ekip Sistemi`,
-                type: 0 // PLAYING
-            }]
-        });
+        // Bot durumu (ayarlanabilir: /durum komutu — data/status.json)
+        try {
+            require('../utils/status').apply(client);
+        } catch (error) {
+            console.error('❌ Durum ayarlanamadı, varsayılana dönülüyor:', error);
+            client.user.setPresence({
+                status: 'dnd',
+                activities: [{ name: `${config.footer.text} | Ekip Sistemi`, type: 0 }],
+            });
+        }
 
         // Yarıda kalan aktiflik testlerini devam ettir
         await aktiflikCommand.resumeTests(client).catch((error) => {
