@@ -9,7 +9,7 @@ module.exports = {
     async execute(interaction) {
         // Buton interaction'ları
         if (interaction.isButton()) {
-            if (interaction.customId === 'aktiflik_confirm') {
+            if (interaction.customId === 'aktiflik_confirm' || interaction.customId === 'aktiflik_cancel') {
                 return aktiflikCommand.handleButton(interaction);
             }
             if (interaction.customId === 'basvuru_button') {

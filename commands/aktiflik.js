@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config.json');
@@ -8,7 +8,54 @@ const activeTests = new Map();
 
 // Kalıcı kayıt (bot yeniden başlarsa test devam etsin)
 const AKTIFLIK_FILE = path.join(__dirname, '../data/aktiflik.json');
+const DATA_DIR = path.join(__dirname, '../data');
+const IMAGE_PREFIX = 'aktiflik-resim'; // data/aktiflik-resim.png gibi saklanır
 
+/* ---------------- Test resmi (bot dosyalarına kayıt) ---------------- */
+function findImageFile() {
+    try {
+        const name = fs.readdirSync(DATA_DIR).find(n => n.startsWith(`${IMAGE_PREFIX}.`));
+        return name ? path.join(DATA_DIR, name) : null;
+    } catch { return null; }
+}
+
+function clearImages() {
+    try {
+        for (const n of fs.readdirSync(DATA_DIR)) {
+            if (n.startsWith(`${IMAGE_PREFIX}.`)) fs.unlinkSync(path.join(DATA_DIR, n));
+        }
+    } catch { /* yoksay */ }
+}
+
+async function saveImage(attachment) {
+    const res = await fetch(attachment.url);
+    if (!res.ok) throw new Error(`resim indirilemedi (HTTP ${res.status})`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length) throw new Error('boş dosya');
+
+    const mime = (attachment.contentType || '').toLowerCase();
+    let ext = 'png';
+    if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg';
+    else if (mime.includes('gif')) ext = 'gif';
+    else if (mime.includes('webp')) ext = 'webp';
+    else if (mime.includes('png')) ext = 'png';
+
+    clearImages(); // eski resmi kaldır
+    const filePath = path.join(DATA_DIR, `${IMAGE_PREFIX}.${ext}`);
+    fs.writeFileSync(filePath, buf);
+    return filePath;
+}
+
+/* ---------------- Yetki ---------------- */
+function isYetkili(interaction) {
+    const isOwnerUser = Array.isArray(config.ownerId)
+        ? config.ownerId.includes(interaction.user.id)
+        : config.ownerId === interaction.user.id;
+    const isOwnerRole = config.ownerRoleId && interaction.member?.roles?.cache?.has(config.ownerRoleId);
+    return Boolean(isOwnerUser || isOwnerRole);
+}
+
+/* ---------------- Kalıcı kayıt ---------------- */
 function saveTest(test) {
     try {
         fs.writeFileSync(AKTIFLIK_FILE, JSON.stringify({
@@ -37,6 +84,62 @@ function clearTest() {
     } catch { /* yoksay */ }
 }
 
+/* ---------------- Butonlar ---------------- */
+function buildStartButtons() {
+    return new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('aktiflik_confirm')
+                .setLabel('ᴀᴋᴛɪғʟɪɢ̆ᴇ ᴋᴀᴛıʟ')
+                .setEmoji('✅')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId('aktiflik_cancel')
+                .setLabel('ɪ̇ᴘᴛᴀʟ ᴇᴛ')
+                .setEmoji('⛔')
+                .setStyle(ButtonStyle.Danger),
+        );
+}
+
+function buildEndButtons() {
+    return new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('aktiflik_finished')
+                .setLabel('ᴀᴋᴛɪ̇ғʟɪ̇ᴋ ʙɪ̇ᴛᴛɪ')
+                .setEmoji('🔴')
+                .setStyle(ButtonStyle.Danger)
+                .setDisabled(true),
+        );
+}
+
+/* ---------------- Bitiş embed'i (referanstaki gibi) ---------------- */
+function buildEndEmbed(test, cancelled) {
+    const mention = config.memberRoleId ? `<@&${config.memberRoleId}>` : '@everyone';
+    const sonSatir = cancelled
+        ? 'TEST İPTAL EDİLDİ — ROL ÇEKME YAPILMADI.'
+        : 'AKTİVLİK TESTİ TAMAMLANDI, SONUÇ LOGU AŞAĞIDADIR.';
+
+    const embed = new EmbedBuilder()
+        .setTitle('🔴 AKTİVLİK BİTTİ')
+        .setDescription(
+            `${mention}\n\n` +
+            `🕐 **BİTİŞ:** <t:${Math.floor(test.endTime / 1000)}:F>\n` +
+            `👤 **KATILIMCI:** ${test.participants.size} KİŞİ\n\n` +
+            sonSatir
+        )
+        .setColor('#e74c3c')
+        .setFooter({ text: config.footer.text });
+
+    const imageFile = findImageFile();
+    if (imageFile) {
+        const name = path.basename(imageFile);
+        embed.setImage(`attachment://${name}`).setThumbnail(`attachment://${name}`);
+    }
+
+    return { embed, imageFile };
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('aktiflik')
@@ -45,15 +148,22 @@ module.exports = {
             option.setName('süre')
                 .setDescription('Test süresi (örn: 1h, 2d, 30m)')
                 .setRequired(true)
+        )
+        .addAttachmentOption(option =>
+            option.setName('resim')
+                .setDescription('Test embedinde gösterilecek resim (bot dosyalarına kaydedilir)')
+                .setRequired(false)
+        )
+        .addBooleanOption(option =>
+            option.setName('resmi_kaldir')
+                .setDescription('Kayıtlı resmi kaldır')
+                .setRequired(false)
         ),
 
     async execute(interaction) {
         try {
             // Owner / Boss rol kontrolü
-            const isOwnerUser = config.ownerId.includes(interaction.user.id);
-            const isOwnerRole = config.ownerRoleId && interaction.member?.roles?.cache?.has(config.ownerRoleId);
-
-            if (!isOwnerUser && !isOwnerRole) {
+            if (!isYetkili(interaction)) {
                 return interaction.reply({
                     content: '❌ Bu komutu sadece **Boss** rolüne sahip kullanıcılar kullanabilir!',
                     ephemeral: true
@@ -93,6 +203,26 @@ module.exports = {
                 });
             }
 
+            // --- Resim: yeni yükleme veya kaldırma ---
+            const resim = interaction.options.getAttachment('resim');
+            const resmiKaldir = interaction.options.getBoolean('resmi_kaldir');
+
+            if (resim) {
+                if (resim.contentType && !resim.contentType.startsWith('image/')) {
+                    return interaction.reply({ content: '❌ Bu dosya bir resim değil! (png/jpg/gif/webp)', ephemeral: true });
+                }
+                try {
+                    await saveImage(resim);
+                } catch (error) {
+                    console.error('Aktiflik resmi kaydedilemedi:', error.message);
+                    return interaction.reply({ content: `❌ Resim kaydedilemedi: \`${error.message}\``, ephemeral: true });
+                }
+            } else if (resmiKaldir) {
+                clearImages();
+            }
+
+            const imageFile = findImageFile();
+
             const endTime = Date.now() + durationMs;
             const participants = new Set();
 
@@ -108,21 +238,21 @@ module.exports = {
                 )
                 .setColor("#add8e6")
                 .setThumbnail(interaction.client.user.displayAvatarURL({ size: 256 })); // Bot avatar'ı
-            // Buton oluştur
-            const button = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('aktiflik_confirm')
-                        .setLabel('Aktifliğini Onayla')
-                        .setStyle(ButtonStyle.Success)
-                );
+
+            if (imageFile) embed.setImage(`attachment://${path.basename(imageFile)}`);
+
+            // Butonlar: katılım + iptal (iptal sadece yetkililer)
+            const button = buildStartButtons();
 
             // Mesajı gönder
-            const message = await interaction.reply({
+            const payload = {
                 embeds: [embed],
                 components: [button],
-                fetchReply: true
-            });
+                fetchReply: true,
+            };
+            if (imageFile) payload.files = [new AttachmentBuilder(imageFile, { name: path.basename(imageFile) })];
+
+            const message = await interaction.reply(payload);
 
             // Aktiflik testini kaydet
             activeTests.set(message.id, {
@@ -151,51 +281,45 @@ module.exports = {
 };
 
 // Aktiflik testini bitir
-async function endActivityTest(messageId) {
+async function endActivityTest(messageId, cancelled = false) {
     try {
         const test = activeTests.get(messageId);
         if (!test) return;
 
         const { participants, message, guild } = test;
 
-        // 2. görsel gibi embed oluştur
-        const endEmbed = new EmbedBuilder()
-            .setTitle('Süre Bitti!')
-            .setDescription(
-                '> **Aktiflik Testi sona ermiştir.**\n' +
-                `**Katılımcı Sayısı:** \`${participants.size}\``
-            )
-            .setColor("#add8e6")
-            .setThumbnail(message.client.user.displayAvatarURL({ size: 256 }))
-            .setFooter({ text: '> Basmayan Üyelerin Permleri Çekiliyor...' });
+        // Referanstaki gibi embed + pasif buton
+        const { embed, imageFile } = buildEndEmbed(test, cancelled);
+
+        const payload = {
+            embeds: [embed],
+            components: [buildEndButtons()],
+        };
+        if (imageFile) payload.files = [new AttachmentBuilder(imageFile, { name: path.basename(imageFile) })];
 
         // Mesajı güncelle
-        await message.edit({
-            embeds: [endEmbed],
-            components: []
-        });
+        await message.edit(payload);
 
+        // İptal edildiyse rol çekme yapılmaz
+        if (!cancelled) {
+            // Crew rolü olan ama butona basmayanları bul ve rolü çek
+            const memberRole = guild.roles.cache.get(config.memberRoleId);
+            if (memberRole) {
+                const members = await guild.members.fetch();
 
-        // Crew rolü olan ama butona basmayanları bul ve rolü çek
-        const memberRole = guild.roles.cache.get(config.memberRoleId);
-        if (!memberRole) return;
+                for (const [memberId, member] of members) {
+                    if (member.roles.cache.has(config.memberRoleId) && !participants.has(memberId)) {
+                        try {
+                            await member.roles.remove(memberRole);
+                            // Sadece "Ekipten atıldı" mesajını gönder (embed olmadan, düz metin)
+                            await message.channel.send(`<@${memberId}> - \`${memberId}\` Ekipten atıldı.`);
 
-        const members = await guild.members.fetch();
-        let removedCount = 0;
-
-        for (const [memberId, member] of members) {
-            if (member.roles.cache.has(config.memberRoleId) && !participants.has(memberId)) {
-                try {
-                    await member.roles.remove(memberRole);
-                    removedCount++;
-
-                    // Sadece "Ekipten atıldı" mesajını gönder (embed olmadan, düz metin)
-                    await message.channel.send(`<@${memberId}> - \`${memberId}\` Ekipten atıldı.`);
-
-                    // Kısa bekleme
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                } catch (error) {
-                    console.error(`Rol çekme hatası ${memberId}:`, error);
+                            // Kısa bekleme
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                        } catch (error) {
+                            console.error(`Rol çekme hatası ${memberId}:`, error);
+                        }
+                    }
                 }
             }
         }
@@ -252,8 +376,16 @@ module.exports.resumeTests = async (client) => {
 
 // Buton interaction handler (interactionCreate.js'e eklenecek)
 module.exports.handleButton = async (interaction) => {
-    if (interaction.customId === 'aktiflik_confirm') {
+    /* --------- İPTAL ET (sadece yetkililer) --------- */
+    if (interaction.customId === 'aktiflik_cancel') {
         try {
+            if (!isYetkili(interaction)) {
+                return interaction.reply({
+                    content: '❌ Bu butonu sadece **yetkililer** kullanabilir!',
+                    ephemeral: true
+                });
+            }
+
             const test = activeTests.get(interaction.message.id);
             if (!test) {
                 return interaction.reply({
@@ -262,50 +394,73 @@ module.exports.handleButton = async (interaction) => {
                 });
             }
 
-            const { participants, message } = test;
-
-            if (participants.has(interaction.user.id)) {
-                return interaction.reply({
-                    content: '❌ Zaten katılımınızı onayladınız!',
-                    ephemeral: true
-                });
+            await interaction.deferReply({ ephemeral: true });
+            await endActivityTest(interaction.message.id, true);
+            return interaction.editReply('⛔ Aktiflik testi iptal edildi. (Rol çekilmedi)');
+        } catch (error) {
+            console.error('İptal butonu hatası:', error);
+            if (!interaction.replied && !interaction.deferred) {
+                return interaction.reply({ content: '❌ Bir hata oluştu!', ephemeral: true });
             }
+        }
+        return;
+    }
 
-            // Katılımcıyı ekle
-            participants.add(interaction.user.id);
-            saveTest(test);
+    if (interaction.customId !== 'aktiflik_confirm') return;
 
-            // Embed'i güncelle - description'da katılımcı sayısını güncelle
-            const currentEmbed = interaction.message.embeds[0];
-            const currentDescription = currentEmbed.description;
-
-            // Katılımcı sayısını güncelle
-            const updatedDescription = currentDescription.replace(
-                /\*\*Katılımcı Sayısı :\*\* `\d+`/,
-                `**Katılımcı Sayısı :** \`${participants.size}\``
-            );
-
-            const updatedEmbed = EmbedBuilder.from(currentEmbed)
-                .setDescription(updatedDescription);
-
-            // Embed'i güncelle ama butonu aktif bırak
-            await interaction.message.edit({
-                embeds: [updatedEmbed]
-            });
-
-            await interaction.reply({
-                content: '✅ Aktifliğiniz onaylandı!',
+    try {
+        const test = activeTests.get(interaction.message.id);
+        if (!test) {
+            return interaction.reply({
+                content: '❌ Bu aktiflik testi artık geçerli değil!',
                 ephemeral: true
             });
+        }
 
-        } catch (error) {
-            console.error('Buton interaction hatası:', error);
-            if (!interaction.replied) {
-                interaction.reply({
-                    content: '❌ Bir hata oluştu!',
-                    ephemeral: true
-                });
-            }
+        const { participants, message } = test;
+
+        if (participants.has(interaction.user.id)) {
+            return interaction.reply({
+                content: '❌ Zaten katılımınızı onayladınız!',
+                ephemeral: true
+            });
+        }
+
+        // Katılımcıyı ekle
+        participants.add(interaction.user.id);
+        saveTest(test);
+
+        // Embed'i güncelle - description'da katılımcı sayısını güncelle
+        const currentEmbed = interaction.message.embeds[0];
+        const currentDescription = currentEmbed.description;
+
+        // Katılımcı sayısını güncelle
+        const updatedDescription = currentDescription.replace(
+            /\*\*Katılımcı Sayısı :\*\* `\d+`/,
+            `**Katılımcı Sayısı :** \`${participants.size}\``
+        );
+
+        const updatedEmbed = EmbedBuilder.from(currentEmbed)
+            .setDescription(updatedDescription);
+
+        // Embed'i güncelle ama butonu aktif bırak (resmi da koru)
+        const payload = { embeds: [updatedEmbed] };
+        const imageFile = findImageFile();
+        if (imageFile) payload.files = [new AttachmentBuilder(imageFile, { name: path.basename(imageFile) })];
+        await message.edit(payload);
+
+        await interaction.reply({
+            content: '✅ Aktifliğiniz onaylandı!',
+            ephemeral: true
+        });
+
+    } catch (error) {
+        console.error('Buton interaction hatası:', error);
+        if (!interaction.replied) {
+            interaction.reply({
+                content: '❌ Bir hata oluştu!',
+                ephemeral: true
+            });
         }
     }
 };
