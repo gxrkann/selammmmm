@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config.json');
@@ -62,6 +62,7 @@ function saveTest(test) {
             messageId: test.message.id,
             channelId: test.message.channel.id,
             endTime: test.endTime,
+            roleId: test.roleId ?? null,
             participants: [...test.participants],
         }, null, 2), 'utf8');
     } catch (error) {
@@ -115,15 +116,17 @@ function buildEndButtons() {
 
 /* ---------------- Bitiş embed'i (referanstaki gibi) ---------------- */
 function buildEndEmbed(test, cancelled) {
-    const mention = config.memberRoleId ? `<@&${config.memberRoleId}>` : '@everyone';
+    const roleId = test.roleId || config.memberRoleId;
+    const mention = roleId ? `<@&${roleId}>` : '@everyone';
     const sonSatir = cancelled
         ? 'TEST İPTAL EDİLDİ — ROL ÇEKME YAPILMADI.'
         : 'AKTİVLİK TESTİ TAMAMLANDI, SONUÇ LOGU AŞAĞIDADIR.';
 
     const embed = new EmbedBuilder()
-        .setTitle('🔴 AKTİVLİK BİTTİ')
+        .setTitle('🎯 AKTİVLİK TESTİ BİTTİ')
         .setDescription(
             `${mention}\n\n` +
+            `🎯 **HEDEF ROL:** ${mention}\n` +
             `🕐 **BİTİŞ:** <t:${Math.floor(test.endTime / 1000)}:F>\n` +
             `👤 **KATILIMCI:** ${test.participants.size} KİŞİ\n\n` +
             sonSatir
@@ -148,6 +151,11 @@ module.exports = {
             option.setName('süre')
                 .setDescription('Test süresi (örn: 1h, 2d, 30m)')
                 .setRequired(true)
+        )
+        .addRoleOption(option =>
+            option.setName('rol')
+                .setDescription('Hedef rol: katılmayanın bu rolü çekilir (boş: ekip rolü)')
+                .setRequired(false)
         )
         .addAttachmentOption(option =>
             option.setName('resim')
@@ -226,20 +234,32 @@ module.exports = {
             const endTime = Date.now() + durationMs;
             const participants = new Set();
 
-            // Embed oluştur (1. görsel gibi)
-            const embed = new EmbedBuilder()
-                .setTitle(`${interaction.guild.name} Aktiflik Testi`)
-                .setDescription(
-                    '> **Aktiflik Testi başlamıştır.**\n' +
-                    'Aşağıdaki butona tıklayarak katılımınızı onaylayabilirsiniz.\n' +
-                    `⚠️ **KATILIM SAĞLAMAZSANIZ** <@&${config.memberRoleId}> perminiz çekilecektir...\n\n` +
-                    `**Kalan Süre :** <t:${Math.floor(endTime / 1000)}:R>\n` +
-                    `**Katılımcı Sayısı :** \`0\``
-                )
-                .setColor("#add8e6")
-                .setThumbnail(interaction.client.user.displayAvatarURL({ size: 256 })); // Bot avatar'ı
+            // Hedef rol: komutta seçildiyse o, yoksa ekip rolü
+            const hedefRol = interaction.options.getRole('rol');
+            const roleId = hedefRol && hedefRol.id !== interaction.guild.id
+                ? hedefRol.id
+                : config.memberRoleId;
+            const mention = roleId ? `<@&${roleId}>` : '@everyone';
 
-            if (imageFile) embed.setImage(`attachment://${path.basename(imageFile)}`);
+            // Embed (referanstaki test sırası tasarımıyla aynı)
+            const embed = new EmbedBuilder()
+                .setTitle('🎯 AKTİVLİK TESTİ BAŞLADI')
+                .setDescription(
+                    `${mention}\n\n` +
+                    `🎯 **HEDEF ROL:** ${mention}\n` +
+                    `🕐 **BİTİŞ:** <t:${Math.floor(endTime / 1000)}:F>\n` +
+                    `👤 **KATILIMCI:** 0 KİŞİ\n\n` +
+                    'AKTİVLİK TESTİ BAŞLADI, KATILIM İÇİN AŞAĞIDAKİ BUTONA BASINIZ.\n' +
+                    `⚠️ **KATILIM SAĞLAMAZSANIZ** ${mention} perminiz çekilecektir.\n\n` +
+                    `**Kalan Süre :** <t:${Math.floor(endTime / 1000)}:R>`
+                )
+                .setColor('#e74c3c')
+                .setFooter({ text: config.footer.text });
+
+            if (imageFile) {
+                const name = path.basename(imageFile);
+                embed.setImage(`attachment://${name}`).setThumbnail(`attachment://${name}`);
+            }
 
             // Butonlar: katılım + iptal (iptal sadece yetkililer)
             const button = buildStartButtons();
@@ -258,6 +278,7 @@ module.exports = {
             activeTests.set(message.id, {
                 endTime,
                 participants,
+                roleId,
                 message,
                 guild: interaction.guild
             });
@@ -302,13 +323,14 @@ async function endActivityTest(messageId, cancelled = false) {
 
         // İptal edildiyse rol çekme yapılmaz
         if (!cancelled) {
-            // Crew rolü olan ama butona basmayanları bul ve rolü çek
-            const memberRole = guild.roles.cache.get(config.memberRoleId);
+            // Hedef rol (komutta seçilen rol, yoksa ekip rolü) olan ama butona basmayanları bul
+            const targetRoleId = test.roleId || config.memberRoleId;
+            const memberRole = targetRoleId ? guild.roles.cache.get(targetRoleId) : null;
             if (memberRole) {
                 const members = await guild.members.fetch();
 
                 for (const [memberId, member] of members) {
-                    if (member.roles.cache.has(config.memberRoleId) && !participants.has(memberId)) {
+                    if (member.roles.cache.has(targetRoleId) && !participants.has(memberId)) {
                         try {
                             await member.roles.remove(memberRole);
                             // Sadece "Ekipten atıldı" mesajını gönder (embed olmadan, düz metin)
@@ -351,6 +373,7 @@ module.exports.resumeTests = async (client) => {
             activeTests.set(saved.messageId, {
                 endTime: saved.endTime,
                 participants: new Set(saved.participants),
+                roleId: saved.roleId || config.memberRoleId,
                 message,
                 guild: message.guild,
             });
@@ -360,6 +383,7 @@ module.exports.resumeTests = async (client) => {
         activeTests.set(saved.messageId, {
             endTime: saved.endTime,
             participants: new Set(saved.participants),
+            roleId: saved.roleId || config.memberRoleId,
             message,
             guild: message.guild,
         });
@@ -434,10 +458,10 @@ module.exports.handleButton = async (interaction) => {
         const currentEmbed = interaction.message.embeds[0];
         const currentDescription = currentEmbed.description;
 
-        // Katılımcı sayısını güncelle
+        // Katılımcı sayısını güncelle (yeni format: 👤 **KATILIMCI:** N KİŞİ)
         const updatedDescription = currentDescription.replace(
-            /\*\*Katılımcı Sayısı :\*\* `\d+`/,
-            `**Katılımcı Sayısı :** \`${participants.size}\``
+            /👤 \*\*KATILIMCI:\*\* \d+ KİŞİ/,
+            `👤 **KATILIMCI:** ${participants.size} KİŞİ`
         );
 
         const updatedEmbed = EmbedBuilder.from(currentEmbed)

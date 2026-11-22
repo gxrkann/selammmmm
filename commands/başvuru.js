@@ -80,13 +80,16 @@ module.exports = {
                 });
             }
 
-            const imageFile = new AttachmentBuilder(path.join(__dirname, '../Zaira_logo.png'));
+            // Büyük resim: siyah padding kırpılmış hali (tam çerçeve dolar)
+            const imageFile = new AttachmentBuilder(path.join(__dirname, '../Zaira_logo_kirpilmis.png'));
+            // Küçük köşe logosu (referanstaki thumbnail gibi)
+            const thumbFile = new AttachmentBuilder(path.join(__dirname, '../Zaira_logo.png'));
 
-            // İlk embed (başvuru mesajı)
+            // İlk embed (başvuru mesajı) — referansla aynı düzen: başlık, metin, büyük resim, hemen altında buton
             const başvuruEmbed = new EmbedBuilder()
                 .setTitle('**Ekip Başvuru Butonu**')
                 .setDescription('Gxrkan Ekip Sunucumuza Hoşgeldiniz. Ekibe Başvurmak İçin Butona Basabilirsiniz')
-                .setImage("attachment://Zaira_logo.png")
+                .setImage("attachment://Zaira_logo_kirpilmis.png")
                 .setThumbnail("attachment://Zaira_logo.png")
                 .setColor("#de4a4a")
                 .setFooter({ text: `${config.footer.text} Bot's` });
@@ -103,7 +106,7 @@ module.exports = {
             await targetChannel.send({
                 embeds: [başvuruEmbed],
                 components: [başvuruButton],
-                files: [imageFile]
+                files: [imageFile, thumbFile]
             });
 
             await interaction.reply({
