@@ -16,7 +16,7 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('topludm')
         .setDescription('Belirtilen role sahip tüm üyelere DM\'den toplu mesaj gönderir')
-        .addRoleOption(o => o.setName('rol').setDescription('Mesajın gideceği rol').setRequired(true))
+        .addRoleOption(o => o.setName('rol').setDescription('Mesajın gideceği rol (@everyone = herkese)').setRequired(true))
         .addStringOption(o => o.setName('mesaj').setDescription('DM\'de gönderilecek mesaj').setRequired(true).setMaxLength(1900))
         .addBooleanOption(o => o.setName('onay').setDescription('Evet ise sadece sahipler kullanabilir (varsayılan: evet)').setRequired(false)),
 
@@ -28,17 +28,18 @@ module.exports = {
         const rol = interaction.options.getRole('rol');
         const mesaj = interaction.options.getString('mesaj');
 
-        if (rol.id === interaction.guild.id) {
-            return interaction.reply({ content: '❌ `@everyone` rolü seçilemez!', ephemeral: true });
-        }
-        if (rol.managed) {
+        // @everyone hedeflenebilir — sunucudaki tüm üyelere DM gider
+        const herkesMi = rol.id === interaction.guild.id;
+
+        if (rol.managed && !herkesMi) {
             return interaction.reply({ content: '❌ Bu rol yönetilen bir roldür, üzerindeki üyeler DM alamaz!', ephemeral: true });
         }
 
         await interaction.deferReply({ ephemeral: true });
 
         await interaction.guild.members.fetch().catch(() => { });
-        const hedefler = [...interaction.guild.members.cache.values()].filter(m => !m.user.bot && m.roles.cache.has(rol.id));
+        const hedefler = [...interaction.guild.members.cache.values()]
+            .filter(m => !m.user.bot && (herkesMi || m.roles.cache.has(rol.id)));
 
         if (hedefler.length === 0) {
             return interaction.editReply('❌ Bu role sahip hiç üye yok (botlar hariç).');
