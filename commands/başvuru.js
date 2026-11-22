@@ -80,14 +80,14 @@ module.exports = {
                 });
             }
 
-            const imageFile = new AttachmentBuilder(path.join(__dirname, '../Sanzy_logosu_ve_ylan_detaylar.png'));
+            const imageFile = new AttachmentBuilder(path.join(__dirname, '../Zaira_logo.png'));
 
             // İlk embed (başvuru mesajı)
             const başvuruEmbed = new EmbedBuilder()
                 .setTitle('**Ekip Başvuru Butonu**')
                 .setDescription('Gxrkan Ekip Sunucumuza Hoşgeldiniz. Ekibe Başvurmak İçin Butona Basabilirsiniz')
-                .setImage("attachment://Sanzy_logosu_ve_ylan_detaylar.png")
-                .setThumbnail("attachment://Sanzy_logosu_ve_ylan_detaylar.png")
+                .setImage("attachment://Zaira_logo.png")
+                .setThumbnail("attachment://Zaira_logo.png")
                 .setColor("#de4a4a")
                 .setFooter({ text: `${config.footer.text} Bot's` });
 
