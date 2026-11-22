@@ -254,6 +254,13 @@ CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
 module.exports = {
   name: Events.GuildMemberAdd,
   async execute(member) {
+    // Oto-rol: giriş yapan üyeye ayarlı rolü ver (DM/log'dan bağımsız, ilk iş)
+    try {
+      await require('../utils/otorol').giveRole(member);
+    } catch (err) {
+      console.error('🔹 Oto-rol verilemedi:', err.message);
+    }
+
     try {
       await ensurePresenceStrong(member);
 

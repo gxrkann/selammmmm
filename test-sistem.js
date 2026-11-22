@@ -50,6 +50,8 @@ try {
     ok('guard.js yüklendi');
     require('./utils/status');
     ok('status.js yüklendi');
+    require('./utils/otorol');
+    ok('otorol.js yüklendi');
 } catch (e) { fail('utils hatası: ' + e.message); }
 
 /* 5) Paketler */
