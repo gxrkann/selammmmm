@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, PermissionFlagsBits } = require('discord.js');
+const { Image, createCanvas } = require('canvas');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config.json');
@@ -10,8 +11,57 @@ const activeTests = new Map();
 const AKTIFLIK_FILE = path.join(__dirname, '../data/aktiflik.json');
 const DATA_DIR = path.join(__dirname, '../data');
 const IMAGE_PREFIX = 'aktiflik-resim'; // data/aktiflik-resim.png gibi saklanır
+const WIDE_SUFFIX = '-genis'; // kırpılmış geniş versiyon: aktiflik-resim-genis.png
 
 /* ---------------- Test resmi (bot dosyalarına kayıt) ---------------- */
+const croppedFiles = new Set(); // hangi orijinal için geniş versiyon hesaplandı
+
+// Resmin siyah/boş padding'ini kırp — logo tam çerçeve dolu görünsün (başvuru paneli gibi)
+function cropPadding(buf) {
+    try {
+        const img = new Image();
+        img.src = buf;
+        const w = img.width;
+        const h = img.height;
+        if (!w || !h || w * h > 8000000) return null;
+
+        const canvas = createCanvas(w, h);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const { data } = ctx.getImageData(0, 0, w, h);
+
+        let minX = w, maxX = 0, minY = h, maxY = 0;
+        const step = 4;
+        for (let y = 0; y < h; y += step) {
+            for (let x = 0; x < w; x += step) {
+                const i = (y * w + x) * 4;
+                if (data[i] + data[i + 1] + data[i + 2] > 60) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+        if (maxX <= minX || maxY <= minY) return null;
+
+        const pad = 40;
+        const rx = Math.max(0, minX - pad);
+        const ry = Math.max(0, minY - pad);
+        const rw = Math.min(w - rx, (maxX - minX) + pad * 2);
+        const rh = Math.min(h - ry, (maxY - minY) + pad * 2);
+        if (rw < 1 || rh < 1) return null;
+        if (rw >= w * 0.95 && rh >= h * 0.95) return null; // zaten dolu, kırpmaya gerek yok
+
+        const out = createCanvas(rw, rh);
+        out.getContext('2d').drawImage(img, rx, ry, rw, rh, 0, 0, rw, rh);
+        return out.toBuffer('image/png');
+    } catch {
+        return null;
+    }
+}
+
+// Orijinal resmi bulur (küçük köşe logosu bunu kullanır)
 function findImageFile() {
     try {
         const name = fs.readdirSync(DATA_DIR).find(n => n.startsWith(`${IMAGE_PREFIX}.`));
@@ -19,10 +69,54 @@ function findImageFile() {
     } catch { return null; }
 }
 
+// Kırpılmış geniş versiyonu üretir (büyük resim bunu kullanır); kırpılamazsa null
+function getWideImageFile() {
+    const original = findImageFile();
+    if (!original) return null;
+
+    if (croppedFiles.has(original)) {
+        const wide = path.join(DATA_DIR, `${IMAGE_PREFIX}${WIDE_SUFFIX}.png`);
+        return fs.existsSync(wide) ? wide : null;
+    }
+
+    const ext = original.slice(original.lastIndexOf('.') + 1).toLowerCase();
+    if (ext !== 'gif') { // gif kırpılırsa animasyon bozulur
+        try {
+            const cropped = cropPadding(fs.readFileSync(original));
+            if (cropped) {
+                const wide = path.join(DATA_DIR, `${IMAGE_PREFIX}${WIDE_SUFFIX}.png`);
+                fs.writeFileSync(wide, cropped);
+                croppedFiles.add(original);
+                return wide;
+            }
+        } catch { /* kırpılamazsa orijinali kullan */ }
+    }
+    croppedFiles.add(original);
+    return null;
+}
+
+// Embed'e büyük resim (tam çerçeve) + küçük köçe logosunu takar, gönderilecek dosyaları döndürür
+function buildImagePayload(embed) {
+    const original = findImageFile();
+    const wide = getWideImageFile();
+    const bigFile = wide || original;
+
+    if (original) embed.setThumbnail(`attachment://${path.basename(original)}`);
+    if (bigFile) embed.setImage(`attachment://${path.basename(bigFile)}`);
+
+    const files = [];
+    if (original) files.push(new AttachmentBuilder(original, { name: path.basename(original) }));
+    if (wide && wide !== original) files.push(new AttachmentBuilder(wide, { name: path.basename(wide) }));
+    return files;
+}
+
 function clearImages() {
+    croppedFiles.clear();
     try {
         for (const n of fs.readdirSync(DATA_DIR)) {
-            if (n.startsWith(`${IMAGE_PREFIX}.`)) fs.unlinkSync(path.join(DATA_DIR, n));
+            if (n.startsWith(`${IMAGE_PREFIX}.`) || n.startsWith(`${IMAGE_PREFIX}${WIDE_SUFFIX}`)) {
+                fs.unlinkSync(path.join(DATA_DIR, n));
+            }
         }
     } catch { /* yoksay */ }
 }
@@ -123,24 +217,17 @@ function buildEndEmbed(test, cancelled) {
         : 'AKTİVLİK TESTİ TAMAMLANDI, SONUÇ LOGU AŞAĞIDADIR.';
 
     const embed = new EmbedBuilder()
-        .setTitle('🎯 AKTİVLİK TESTİ BİTTİ')
+        .setTitle('🎯 AKTİVLİK BİTTİ')
         .setDescription(
             `${mention}\n\n` +
-            `🎯 **HEDEF ROL:** ${mention}\n` +
-            `🕐 **BİTİŞ:** <t:${Math.floor(test.endTime / 1000)}:F>\n` +
-            `👤 **KATILIMCI:** ${test.participants.size} KİŞİ\n\n` +
+            `🕐 **BİTİŞ:** <t:${Math.floor(test.endTime / 1000)}:F> • 👤 **KATILIMCI:** ${test.participants.size} KİŞİ\n\n` +
             sonSatir
         )
-        .setColor('#e74c3c')
+        .setColor('#de4a4a')
         .setFooter({ text: config.footer.text });
 
-    const imageFile = findImageFile();
-    if (imageFile) {
-        const name = path.basename(imageFile);
-        embed.setImage(`attachment://${name}`).setThumbnail(`attachment://${name}`);
-    }
-
-    return { embed, imageFile };
+    const files = buildImagePayload(embed);
+    return { embed, files };
 }
 
 module.exports = {
@@ -229,8 +316,6 @@ module.exports = {
                 clearImages();
             }
 
-            const imageFile = findImageFile();
-
             const endTime = Date.now() + durationMs;
             const participants = new Set();
 
@@ -241,25 +326,19 @@ module.exports = {
                 : config.memberRoleId;
             const mention = roleId ? `<@&${roleId}>` : '@everyone';
 
-            // Embed (referanstaki test sırası tasarımıyla aynı)
+            // Embed — başvuru panelindeki gibi temiz ve yalın düzen
             const embed = new EmbedBuilder()
-                .setTitle('🎯 AKTİVLİK TESTİ BAŞLADI')
+                .setTitle('🎯 AKTİVLİK TESTİ')
                 .setDescription(
                     `${mention}\n\n` +
-                    `🎯 **HEDEF ROL:** ${mention}\n` +
-                    `🕐 **BİTİŞ:** <t:${Math.floor(endTime / 1000)}:F>\n` +
-                    `👤 **KATILIMCI:** 0 KİŞİ\n\n` +
-                    'AKTİVLİK TESTİ BAŞLADI, KATILIM İÇİN AŞAĞIDAKİ BUTONA BASINIZ.\n' +
-                    `⚠️ **KATILIM SAĞLAMAZSANIZ** ${mention} perminiz çekilecektir.\n\n` +
-                    `**Kalan Süre :** <t:${Math.floor(endTime / 1000)}:R>`
+                    'Aşağıdaki butona basarak katılımınızı onaylayınız. Katılmayanların bu rolü çekilecektir.\n\n' +
+                    `🕐 **BİTİŞ:** <t:${Math.floor(endTime / 1000)}:F> • 👤 **KATILIMCI:** 0 KİŞİ`
                 )
-                .setColor('#e74c3c')
+                .setColor('#de4a4a')
                 .setFooter({ text: config.footer.text });
 
-            if (imageFile) {
-                const name = path.basename(imageFile);
-                embed.setImage(`attachment://${name}`).setThumbnail(`attachment://${name}`);
-            }
+            // Büyük resim (kırpılmış, tam çerçeve) + küçük köşe logosu
+            const files = buildImagePayload(embed);
 
             // Butonlar: katılım + iptal (iptal sadece yetkililer)
             const button = buildStartButtons();
@@ -270,7 +349,7 @@ module.exports = {
                 components: [button],
                 fetchReply: true,
             };
-            if (imageFile) payload.files = [new AttachmentBuilder(imageFile, { name: path.basename(imageFile) })];
+            if (files.length) payload.files = files;
 
             const message = await interaction.reply(payload);
 
@@ -310,13 +389,13 @@ async function endActivityTest(messageId, cancelled = false) {
         const { participants, message, guild } = test;
 
         // Referanstaki gibi embed + pasif buton
-        const { embed, imageFile } = buildEndEmbed(test, cancelled);
+        const { embed, files } = buildEndEmbed(test, cancelled);
 
         const payload = {
             embeds: [embed],
             components: [buildEndButtons()],
         };
-        if (imageFile) payload.files = [new AttachmentBuilder(imageFile, { name: path.basename(imageFile) })];
+        if (files.length) payload.files = files;
 
         // Mesajı güncelle
         await message.edit(payload);
@@ -467,10 +546,10 @@ module.exports.handleButton = async (interaction) => {
         const updatedEmbed = EmbedBuilder.from(currentEmbed)
             .setDescription(updatedDescription);
 
-        // Embed'i güncelle ama butonu aktif bırak (resmi da koru)
+        // Embed'i güncelle ama butonu aktif bırak — resimleri korumak için dosyaları tekrar gönder
         const payload = { embeds: [updatedEmbed] };
-        const imageFile = findImageFile();
-        if (imageFile) payload.files = [new AttachmentBuilder(imageFile, { name: path.basename(imageFile) })];
+        const files = buildImagePayload(updatedEmbed);
+        if (files.length) payload.files = files;
         await message.edit(payload);
 
         await interaction.reply({
