@@ -214,19 +214,23 @@ function buildEndEmbed(test, cancelled) {
     const mention = roleId ? `<@&${roleId}>` : '@everyone';
     const sonSatir = cancelled
         ? 'TEST İPTAL EDİLDİ — ROL ÇEKME YAPILMADI.'
-        : 'AKTİVLİK TESTİ TAMAMLANDI, SONUÇ LOGU AŞAĞIDADIR.';
+        : 'AKTİFLİK TESTİ TAMAMLANDI, SONUÇ LOGU AŞAĞIDADIR.';
 
     const embed = new EmbedBuilder()
-        .setTitle('🎯 AKTİVLİK BİTTİ')
+        .setTitle('🎯 AKTİFLİK BİTTİ')
         .setDescription(
-            `${mention}\n\n` +
-            `🕐 **BİTİŞ:** <t:${Math.floor(test.endTime / 1000)}:F> • 👤 **KATILIMCI:** ${test.participants.size} KİŞİ\n\n` +
-            sonSatir
+            `${mention}\n` +
+            `🌐 **HEDEF ROL:** ${mention}\n` +
+            `🕐 **BİTİŞ:** <t:${Math.floor(test.endTime / 1000)}:F>\n` +
+            `👤 **KATILIMCI:** ${test.participants.size} KİŞİ\n\n` +
+            sonSatir + '\n' +
+            '![bitis](attachment://aktiflik-bitis.png)'
         )
-        .setColor('#de4a4a')
+        .setColor('#ed4245')
         .setFooter({ text: config.footer.text });
 
     const files = buildImagePayload(embed);
+    files.push(new AttachmentBuilder(path.join(__dirname, '../assets/aktiflik-bitis.png'), { name: 'aktiflik-bitis.png' }));
     return { embed, files };
 }
 
@@ -326,15 +330,17 @@ module.exports = {
                 : config.memberRoleId;
             const mention = roleId ? `<@&${roleId}>` : '@everyone';
 
-            // Embed — başvuru panelindeki gibi temiz ve yalın düzen
+            // Embed — referans (RAGE) düzeniyle birebir
             const embed = new EmbedBuilder()
-                .setTitle('🎯 AKTİVLİK TESTİ')
+                .setTitle('🎯 AKTİFLİK TESTİ')
                 .setDescription(
-                    `${mention}\n\n` +
-                    'Aşağıdaki butona basarak katılımınızı onaylayınız. Katılmayanların bu rolü çekilecektir.\n\n' +
-                    `🕐 **BİTİŞ:** <t:${Math.floor(endTime / 1000)}:F> • 👤 **KATILIMCI:** 0 KİŞİ`
+                    `${mention}\n` +
+                    `🌐 • HEDEF ROL: ${mention}\n` +
+                    `🕐 • BİTİŞ: <t:${Math.floor(endTime / 1000)}:F>\n` +
+                    `👤 • KATILIMCI: 0 KİŞİ\n\n` +
+                    'Aşağıdaki butona basarak katılımınızı onaylayınız. Katılmayanların bu rolü çekilecektir.'
                 )
-                .setColor('#de4a4a')
+                .setColor('#ed4245')
                 .setFooter({ text: config.footer.text });
 
             // Büyük resim (kırpılmış, tam çerçeve) + küçük köşe logosu
@@ -393,7 +399,7 @@ async function endActivityTest(messageId, cancelled = false) {
 
         const payload = {
             embeds: [embed],
-            components: [buildEndButtons()],
+            components: [], // referansta buton açıklamanın içinde görsel olarak duruyor
         };
         if (files.length) payload.files = files;
 
@@ -537,10 +543,10 @@ module.exports.handleButton = async (interaction) => {
         const currentEmbed = interaction.message.embeds[0];
         const currentDescription = currentEmbed.description;
 
-        // Katılımcı sayısını güncelle (yeni format: 👤 **KATILIMCI:** N KİŞİ)
+        // Katılımcı sayısını güncelle (format: 👤 • KATILIMCI: N KİŞİ)
         const updatedDescription = currentDescription.replace(
-            /👤 \*\*KATILIMCI:\*\* \d+ KİŞİ/,
-            `👤 **KATILIMCI:** ${participants.size} KİŞİ`
+            /👤 • KATILIMCI: \d+ KİŞİ/,
+            `👤 • KATILIMCI: ${participants.size} KİŞİ`
         );
 
         const updatedEmbed = EmbedBuilder.from(currentEmbed)
