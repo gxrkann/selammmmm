@@ -18,6 +18,9 @@ module.exports = {
             if (interaction.customId.startsWith('etk_')) {
                 return require('../commands/etkinlik').handleButton(interaction);
             }
+            if (interaction.customId.startsWith('klsf:')) {
+                return require('../commands/kanalsifirla').handleButton(interaction);
+            }
         }
 
         // Select menu interaction'ları
