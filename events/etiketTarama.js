@@ -4,7 +4,7 @@
 const { Events } = require('discord.js');
 const etiket = require('../utils/etiket');
 
-const SWEEP_INTERVAL_MS = 5 * 60 * 1000; // 5 dakika
+const SWEEP_INTERVAL_MS = 60 * 1000; // 1 dakika (Discord etiket değişikliğinde olay göndermiyor)
 
 module.exports = {
     name: Events.ClientReady,
