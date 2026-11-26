@@ -52,6 +52,8 @@ try {
     ok('status.js yüklendi');
     require('./utils/otorol');
     ok('otorol.js yüklendi');
+    require('./utils/etiket');
+    ok('etiket.js yüklendi');
 } catch (e) { fail('utils hatası: ' + e.message); }
 
 /* 5) Paketler */
