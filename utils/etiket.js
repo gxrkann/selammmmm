@@ -1,6 +1,7 @@
 // utils/etiket.js
-// Sunucu etiketi (tag) rolü: üyenin ismi etiketi içerirse rol verilir,
-// etiketi çıkarınca rol geri alınır.
+// Discord "Sunucu Etiketi" rolü: üyesi sunucunun etiketini profilinde taşıyan
+// üyeye rol verilir, etiketi kaldırınca rol geri alınır.
+// Kontrol: user.primaryGuild — identityGuildId (bu sunucu) + identityEnabled (etiket açık mı)
 // Veri: data/etiket.json — /etiket komutuyla değişir, restart'ta korunur.
 
 const fs = require('fs');
@@ -8,18 +9,19 @@ const path = require('path');
 
 const FILE = path.join(__dirname, '../data/etiket.json');
 
-/** @type {{ text: string|null, roleId: string|null, enabled: boolean }} */
-let data = { text: null, roleId: null, enabled: false };
+/** @type {{ roleId: string|null, enabled: boolean }} */
+let data = { roleId: null, enabled: false };
 
 function load() {
     try {
         if (fs.existsSync(FILE)) {
             const parsed = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-            data = { text: null, roleId: null, enabled: false, ...parsed };
+            // Eski "text" alanı artık kullanılmıyor (Discord sunucu etiketi sistemi)
+            data = { roleId: parsed.roleId ?? null, enabled: parsed.enabled ?? false };
         }
     } catch (error) {
         console.error('[ETIKET] Dosya okunamadı:', error.message);
-        data = { text: null, roleId: null, enabled: false };
+        data = { roleId: null, enabled: false };
     }
 }
 
@@ -36,10 +38,10 @@ function get() {
     return { ...data };
 }
 
-/** Ayarları günceller (metin + rol birlikte verilirse otomatik aktif edilir) */
+/** Ayarları günceller (roleId verilirse otomatik aktif edilir) */
 function set(patch) {
     data = { ...data, ...patch };
-    if (patch.text && patch.roleId) data.enabled = true;
+    if (patch.roleId) data.enabled = true;
     save();
     return get();
 }
@@ -51,12 +53,15 @@ function disable() {
     return get();
 }
 
-/** Üyenin ismi etiketi içeriyor mu? (kullanıcı adı + global ad + takma ad) */
+/**
+ * Üye bu sunucunun etiketini taşıyor mu?
+ * - identityGuildId: etiketin geldiği sunucu (bizim sunucumuz olmalı)
+ * - identityEnabled: etiket şu anda görünür mü (üye elle kaldırdıysa false)
+ */
 function memberHasTag(member) {
-    if (!data.text || !member) return false;
-    const needle = String(data.text).toLocaleLowerCase('tr-TR');
-    const fields = [member.nickname, member.user?.username, member.user?.globalName];
-    return fields.some(f => typeof f === 'string' && f.toLocaleLowerCase('tr-TR').includes(needle));
+    const pg = member?.user?.primaryGuild;
+    if (!pg) return false;
+    return pg.identityGuildId === member.guild.id && pg.identityEnabled === true;
 }
 
 async function resolveRole(guild) {
@@ -74,11 +79,11 @@ function roleUsable(guild, role) {
 }
 
 /**
- * Üyenin ismi ile rol durumunu eşitler.
+ * Üyenin etiket durumu ile rolünü eşitler.
  * 'verildi' | 'alindi' | null (değişiklik yok / yapılamadı) döner.
  */
 async function sync(member, reason = 'Sunucu etiketi kontrolü') {
-    if (!data.enabled || !data.text || !data.roleId) return null;
+    if (!data.enabled || !data.roleId) return null;
     if (!member || member.user?.bot) return null;
 
     try {
@@ -104,10 +109,10 @@ async function sync(member, reason = 'Sunucu etiketi kontrolü') {
     }
 }
 
-/** Sunucudaki tüm üyeleri tarar (ayar değişince / bot başlarken) */
+/** Sunucudaki tüm üyeleri tarar (ayar değişince / bot başlarken / periyodik) */
 async function sweep(guild, reason = 'Sunucu etiketi taraması') {
     const result = { verilen: 0, alinan: 0 };
-    if (!data.enabled || !data.text || !data.roleId) return result;
+    if (!data.enabled || !data.roleId) return result;
     if (!guild.members.me) await guild.members.fetchMe().catch(() => null);
 
     try {
